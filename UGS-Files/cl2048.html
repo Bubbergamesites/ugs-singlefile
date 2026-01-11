@@ -1,8 +1,250 @@
 <!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Animated 2048</title>
+    <style>
+        body {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            background-color: #faf8ef;
+            font-family: Arial, sans-serif;
+            margin: 0;
+        }
+        .header { width: 300px; display: flex; justify-content: space-between; align-items: center; }
+        #score-container { background: #bbada0; padding: 10px; border-radius: 5px; color: white; font-weight: bold; }
+        
+        #grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            grid-gap: 10px;
+            background-color: #bbada0;
+            padding: 10px;
+            border-radius: 10px;
+            position: relative;
+        }
+        .cell {
+            width: 60px;
+            height: 60px;
+            background-color: #cdc1b4;
+            border-radius: 5px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            font-weight: bold;
+            color: #776e65;
+            /* Transition for color changes */
+            transition: background-color 0.1s ease-in-out;
+        }
 
+        /* --- Animations --- */
+        
+        /* Applied when a new tile appears */
+        .tile-new {
+            animation: appear 200ms ease-out;
+        }
 
-<!-- Ultimate Game Stash file--> 
-<!-- For the regularly updating doc go to https://docs.google.com/document/d/1_FmH3BlSBQI7FGgAQL59-ZPe8eCxs35wel6JUyVaG8Q/ -->
+        /* Applied when two tiles merge */
+        .tile-merged {
+            animation: pop 200ms ease-in-out;
+        }
 
+        @keyframes appear {
+            0% { opacity: 0; transform: scale(0); }
+            100% { opacity: 1; transform: scale(1); }
+        }
 
-<html> <head> <meta charset="utf-8" /> <link href="https://cdn.jsdelivr.net/gh/qollaaa/j@12a9db02c96fde177dc0e56e1bcc440de5cc3250/Games/2048/style/main.css" rel="stylesheet" type="text/css" /> <link href="https://cdn.jsdelivr.net/gh/qollaaa/j@12a9db02c96fde177dc0e56e1bcc440de5cc3250/Games/2048/style/ai.css" rel="stylesheet" type="text/css" /> <link rel="shortcut icon" href="favicon.ico" /> <meta name="HandheldFriendly" content="True" /> <meta name="MobileOptimized" content="320" /> <meta name="viewport" content="width=device-width, target-densitydpi=160dpi, initial-scale=1.0, maximum-scale=1, user-scalable=no" /> </head> <body> <div class="container"> <div class="heading"> <h1 class="title">2048</h1> <div class="score-container">0</div> </div> <div class="controls"> <div id="hint-button-container"> <button id="hint-button" class="ai-button">Get Hint</button> </div> <div id="feedback-container"></div> <div id="run-button-container"> <button id="run-button" class="ai-button">Auto-run</button> </div> </div> <div class="game-container"> <div class="game-message"> <p></p> <div class="lower"> <a class="retry-button">Try again</a> <div class="score-sharing"></div> </div> </div> <div class="grid-container"> <div class="grid-row"> <div class="grid-cell"></div> <div class="grid-cell"></div> <div class="grid-cell"></div> <div class="grid-cell"></div> </div> <div class="grid-row"> <div class="grid-cell"></div> <div class="grid-cell"></div> <div class="grid-cell"></div> <div class="grid-cell"></div> </div> <div class="grid-row"> <div class="grid-cell"></div> <div class="grid-cell"></div> <div class="grid-cell"></div> <div class="grid-cell"></div> </div> <div class="grid-row"> <div class="grid-cell"></div> <div class="grid-cell"></div> <div class="grid-cell"></div> <div class="grid-cell"></div> </div> </div> <div class="tile-container"></div> </div> </div> <script src="https://cdn.jsdelivr.net/gh/qollaaa/j@12a9db02c96fde177dc0e56e1bcc440de5cc3250/Games/2048/js/animframe_polyfill.js"></script> <script src="https://cdn.jsdelivr.net/gh/qollaaa/j@12a9db02c96fde177dc0e56e1bcc440de5cc3250/Games/2048/js/hammer.min.js"></script> <script src="https://cdn.jsdelivr.net/gh/qollaaa/j@12a9db02c96fde177dc0e56e1bcc440de5cc3250/Games/2048/js/keyboard_input_manager.js"></script> <script src="https://cdn.jsdelivr.net/gh/qollaaa/j@12a9db02c96fde177dc0e56e1bcc440de5cc3250/Games/2048/js/html_actuator.js"></script> <script src="https://cdn.jsdelivr.net/gh/qollaaa/j@12a9db02c96fde177dc0e56e1bcc440de5cc3250/Games/2048/js/grid.js"></script> <script src="https://cdn.jsdelivr.net/gh/qollaaa/j@12a9db02c96fde177dc0e56e1bcc440de5cc3250/Games/2048/js/tile.js"></script> <script src="https://cdn.jsdelivr.net/gh/qollaaa/j@12a9db02c96fde177dc0e56e1bcc440de5cc3250/Games/2048/js/ai.js"></script> <script src="https://cdn.jsdelivr.net/gh/qollaaa/j@12a9db02c96fde177dc0e56e1bcc440de5cc3250/Games/2048/js/game_manager.js"></script> <script src="https://cdn.jsdelivr.net/gh/qollaaa/j@12a9db02c96fde177dc0e56e1bcc440de5cc3250/Games/2048/js/application.js"></script> </body> </html>
+        @keyframes pop {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.2); }
+            100% { transform: scale(1); }
+        }
+
+        /* Tile Colors */
+        .tile-2 { background: #eee4da; }
+        .tile-4 { background: #ede0c8; }
+        .tile-8 { background: #f2b179; color: white; }
+        .tile-16 { background: #f59563; color: white; }
+        .tile-32 { background: #f67c5f; color: white; }
+        .tile-64 { background: #f65e3b; color: white; }
+        .tile-128 { background: #edcf72; color: white; font-size: 20px; }
+        .tile-256 { background: #edcc61; color: white; font-size: 20px; }
+        .tile-512 { background: #edc850; color: white; font-size: 20px; }
+        .tile-1024 { background: #edc53f; color: white; font-size: 16px; }
+        .tile-2048 { background: #edc22e; color: white; font-size: 16px; }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1>2048</h1>
+        <div id="score-container">Score: <span id="score">0</span></div>
+    </div>
+    
+    <div id="grid"></div>
+
+    <p>Use <b>Arrow Keys</b> to move tiles!</p>
+
+    <script>
+        const gridDisplay = document.querySelector('#grid');
+        const scoreDisplay = document.querySelector('#score');
+        const width = 4;
+        let squares = [];
+        let score = 0;
+
+        function createBoard() {
+            for (let i = 0; i < width * width; i++) {
+                let square = document.createElement('div');
+                square.innerHTML = '';
+                square.className = 'cell';
+                gridDisplay.appendChild(square);
+                squares.push(square);
+            }
+            generate();
+            generate();
+        }
+
+        function generate() {
+            let emptySquares = squares.filter(s => s.innerHTML === '');
+            if (emptySquares.length > 0) {
+                let randomSquare = emptySquares[Math.floor(Math.random() * emptySquares.length)];
+                randomSquare.innerHTML = Math.random() > 0.1 ? 2 : 4;
+                updateStyles();
+                // Add the appear animation class
+                randomSquare.classList.add('tile-new');
+                checkForGameOver();
+            }
+        }
+
+        function updateStyles() {
+            squares.forEach(square => {
+                let val = square.innerHTML;
+                // Clean classes but keep 'cell'
+                square.className = 'cell'; 
+                if (val !== '') {
+                    square.classList.add('tile-' + val);
+                }
+            });
+        }
+
+        // Logic for movement
+        function moveRight() {
+            for (let i = 0; i < 16; i++) {
+                if (i % 4 === 0) {
+                    let row = [
+                        parseInt(squares[i].innerHTML) || 0,
+                        parseInt(squares[i+1].innerHTML) || 0,
+                        parseInt(squares[i+2].innerHTML) || 0,
+                        parseInt(squares[i+3].innerHTML) || 0
+                    ];
+                    let filteredRow = row.filter(num => num);
+                    let newRow = Array(4 - filteredRow.length).fill('').concat(filteredRow);
+                    for (let j = 0; j < 4; j++) squares[i+j].innerHTML = newRow[j];
+                }
+            }
+        }
+
+        function moveLeft() {
+            for (let i = 0; i < 16; i++) {
+                if (i % 4 === 0) {
+                    let row = [
+                        parseInt(squares[i].innerHTML) || 0,
+                        parseInt(squares[i+1].innerHTML) || 0,
+                        parseInt(squares[i+2].innerHTML) || 0,
+                        parseInt(squares[i+3].innerHTML) || 0
+                    ];
+                    let filteredRow = row.filter(num => num);
+                    let newRow = filteredRow.concat(Array(4 - filteredRow.length).fill(''));
+                    for (let j = 0; j < 4; j++) squares[i+j].innerHTML = newRow[j];
+                }
+            }
+        }
+
+        function moveUp() {
+            for (let i = 0; i < 4; i++) {
+                let col = [
+                    parseInt(squares[i].innerHTML) || 0,
+                    parseInt(squares[i+width].innerHTML) || 0,
+                    parseInt(squares[i+width*2].innerHTML) || 0,
+                    parseInt(squares[i+width*3].innerHTML) || 0
+                ];
+                let filteredCol = col.filter(num => num);
+                let newCol = filteredCol.concat(Array(4 - filteredCol.length).fill(''));
+                for (let j = 0; j < 4; j++) squares[i+width*j].innerHTML = newCol[j];
+            }
+        }
+
+        function moveDown() {
+            for (let i = 0; i < 4; i++) {
+                let col = [
+                    parseInt(squares[i].innerHTML) || 0,
+                    parseInt(squares[i+width].innerHTML) || 0,
+                    parseInt(squares[i+width*2].innerHTML) || 0,
+                    parseInt(squares[i+width*3].innerHTML) || 0
+                ];
+                let filteredCol = col.filter(num => num);
+                let newCol = Array(4 - filteredCol.length).fill('').concat(filteredCol);
+                for (let j = 0; j < 4; j++) squares[i+width*j].innerHTML = newCol[j];
+            }
+        }
+
+        function combineRow(direction) {
+            for (let i = 0; i < 15; i++) {
+                if (squares[i].innerHTML !== '' && squares[i].innerHTML === squares[i+1].innerHTML && (i+1) % 4 !== 0) {
+                    let combinedTotal = parseInt(squares[i].innerHTML) + parseInt(squares[i+1].innerHTML);
+                    squares[i].innerHTML = combinedTotal;
+                    squares[i+1].innerHTML = '';
+                    score += combinedTotal;
+                    scoreDisplay.innerHTML = score;
+                    // Add merge animation
+                    squares[i].classList.add('tile-merged');
+                }
+            }
+            updateStyles();
+        }
+
+        function combineColumn() {
+            for (let i = 0; i < 12; i++) {
+                if (squares[i].innerHTML !== '' && squares[i].innerHTML === squares[i+width].innerHTML) {
+                    let combinedTotal = parseInt(squares[i].innerHTML) + parseInt(squares[i+width].innerHTML);
+                    squares[i].innerHTML = combinedTotal;
+                    squares[i+width].innerHTML = '';
+                    score += combinedTotal;
+                    scoreDisplay.innerHTML = score;
+                    // Add merge animation
+                    squares[i].classList.add('tile-merged');
+                }
+            }
+            updateStyles();
+        }
+
+        function control(e) {
+            if (e.keyCode === 37) keyLeft();
+            else if (e.keyCode === 38) keyUp();
+            else if (e.keyCode === 39) keyRight();
+            else if (e.keyCode === 40) keyDown();
+        }
+        document.addEventListener('keyup', control);
+
+        function keyRight() { moveRight(); combineRow(); moveRight(); generate(); }
+        function keyLeft() { moveLeft(); combineRow(); moveLeft(); generate(); }
+        function keyUp() { moveUp(); combineColumn(); moveUp(); generate(); }
+        function keyDown() { moveDown(); combineColumn(); moveDown(); generate(); }
+
+        function checkForGameOver() {
+            let zeros = squares.filter(s => s.innerHTML === '').length;
+            if (zeros === 0) {
+                alert('Game Over!');
+                document.removeEventListener('keyup', control);
+            }
+        }
+
+        createBoard();
+    </script>
+</body>
+</html>
