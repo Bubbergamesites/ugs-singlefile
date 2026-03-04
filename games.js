@@ -1,4 +1,3 @@
-// LAST GAME IS clkirby64crystalshards
 let files = [
   "1",
   "10bullets",
@@ -2661,9 +2660,9 @@ function generateAllSections() {
   files.forEach((file) => {
     const lower = file.toLowerCase();
     if (lower.startsWith("")) {
-      const aftercl = lower.substring(-2);
-      if (aftercl.length > 2) {
-        const firstChar = aftercl[2].toUpperCase();
+      const aftercl = lower.substring(0);
+      if (aftercl.length > 0) {
+        const firstChar = aftercl[0].toUpperCase();
         if (filesByChar[firstChar]) {
           filesByChar[firstChar].push(file);
         }
@@ -2700,7 +2699,7 @@ function generateAllSections() {
           const encoded = encodeURIComponent(normalized);
 
           fetch(
-            `https://cdn.jsdelivr.net/gh/bubbls/ugs-singlefile/UGS-Files/cl${encoded}?t=${Date.now()}`,
+            `https://cdn.jsdelivr.net/gh/Bubbergamesites/ugs-singlefile/UGS-Files/cl${encoded}?t=${Date.now()}`,
           )
             .then((response) => response.text())
             .then((text) => {
