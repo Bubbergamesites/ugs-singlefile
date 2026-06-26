@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Globby Chase 3D</title>
+  <style>
+    body { margin: 0; overflow: hidden; background: #0b0c10; font-family: 'Segoe UI', Arial, sans-serif; }
+    
+    #hud {
+      position: absolute;
+      top: 15px;
+      left: 15px;
+      color: #fff;
+      background: rgba(11, 12, 16, 0.85);
+      padding: 15px;
+      border-radius: 8px;
+      border: 1px solid #1f2833;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+      pointer-events: none;
+      z-index: 5;
+    }
+    
+    #level { font-size: 20px; font-weight: bold; color: #66fcf1; margin-bottom: 5px; }
+    .instruction { font-size: 13px; color: #c5a059; margin-top: 5px; }
+
+    #screen-overlay {
+      position: absolute;
+      top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(11, 12, 16, 0.9);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      text-align: center;
+      z-index: 10;
+    }
+
+    h1 { color: #66fcf1; font-size: 42px; margin-bottom: 10px; text-shadow: 0 0 10px rgba(102,252,241,0.3); }
+    p { max-width: 450px; font-size: 16px; line-height: 1.6; color: #c5c6c7; margin-bottom: 25px; }
+    
+    .btn {
+      background: #66fcf1; color: #0b0c10; border: none; padding: 12px 35px;
+      font-size: 18px; font-weight: bold; border-radius: 25px; cursor: pointer;
+      transition: all 0.2s ease; box-shadow: 0 4px 15px rgba(102,252,241,0.4);
+    }
+    .btn:hover { transform: translateY(-2px); background: #45a29e; color: #fff; }
+  </style>
+</head>
+<body>
+
+<div id="hud">
+  <div id="level">Level 1</div>
+  <div style="color: #c5c6c7;">Reach the <b>Black Orb</b> before Globby catches you!</div>
+  <div style="color: #ffaa00; font-size:13px; margin-top:3px;">⚠️ Watch the floor indicators for falling <b>Meteors</b>!</div>
+  <div class="instruction">W/S (or Up/Down) = Walk • A/D (or Left/Right) = Look Around • R = Restart Game</div>
+</div>
+
+<div id="screen-overlay">
+  <h1 id="overlay-title">Globby Chase 3D</h1>
+  <p id="overlay-desc">See through your own eyes. Navigate the maze corridors and find the floating black vortex orb to escape before Globby catches you, while dodging lethal falling meteors!</p>
+  <button id="start-btn" class="btn">Start Game</button>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+<script>
+/* =========================================================================
+   CORE CONFIGURATION & STATE
+========================================================================= */
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0a0c10);
+scene.fog = new THREE.FogExp2(0x0a0c10, 0.025);
+
+const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 1000);
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(window.devicePixelRatio);
+document.body.appendChild(renderer.domElement);
+
+const CELL = 12;
+let level = 1;
+let size = 9;
+let mazeData = [];
+let walls = [];
+let gameRunning = false;
+
+// Meteors storage
+let meteors = [];
+let lastMeteorSpawnTime = 0;
+const spawnInterval = 1800; 
+
+// Player Viewpoint transform state
+const playerState = {
+  position: new THREE.Vector3(0, 2.5, 0), 
+  rotationY: 0
+};
+
+// Lighting
+const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+scene.add(ambientLight);
+const dirLight = new THREE.DirectionalLight(0x66fcf1, 0.6);
+dirLight.position.set(20, 40, 20);
+scene.add(dirLight);
+
+/* =========================================================================
+   AUDIO SETUP (PROXIMITY DETECTOR)
+========================================================================= */
+const proximityAudio = new Audio('https://globbychase3d.wasmer.app/audio.wav');
+proximityAudio.loop = true;
+proximityAudio.volume = 0; 
+
+function startAudioContext() {
+  proximityAudio.play().catch(err => {
+    console.log("Audio context standby:", err);
+  });
+}
+
+/* =========================================================================
+   ENEMY DESIGN (RED BLOB GLOBBY) - CAN WALK THROUGH WALLS
+========================================================================= */
+const globby = new THREE.Mesh(
+  new THREE.SphereGeometry(1.8, 32, 16),
+  new THREE.MeshStandardMaterial({ 
+    color: 0xff0000, 
+    roughness: 0.1, 
+    metalness: 0.1,
+    transparent: true,
+    opacity: 0.85
+  })
+);
+const globbyLight = new THREE.PointLight(0xff0000, 2, 15);
+globby.add(globbyLight);
+scene.add(globby);
+
+/* =========================================================================
+   OBJECTIVE DESIGN (FLOATING BLACK ORB - LOWERED TO GROUND)
+========================================================================= */
+const orbGroup = new THREE.Group();
+const orbCore = new THREE.Mesh(
+  new THREE.SphereGeometry(1.5, 32, 32),
+  new THREE.MeshBasicMaterial({ color: 0x000000 })
+);
+const orbRing = new THREE.Mesh(
+  new THREE.TorusGeometry(2.2, 0.15, 8, 32),
+  new THREE.MeshBasicMaterial({ color: 0x66fcf1 })
+);
+orbRing.rotation.x = Math.PI / 2;
+orbGroup.add(orbCore, orbRing);
+
+const orbLight = new THREE.PointLight(0x66fcf1, 3, 20);
+orbLight.position.y = 2;
+orbGroup.add(orbLight);
+scene.add(orbGroup);
+
+/* =========================================================================
+   MAZE GENERATION & BUILD
+========================================================================= */
+function generateMaze(n) {
+  mazeData = Array.from({ length: n }, () =>
+    Array.from({ length: n }, () => ({ visited: false, walls: [1, 1, 1, 1] }))
+  );
+
+  function carve(x, z) {
+    mazeData[z][x].visited = true;
+    const dirs = [[0, -1, 0, 2], [1, 0, 1, 3], [0, 1, 2, 0], [-1, 0, 3, 1]];
+    dirs.sort(() => Math.random() - 0.5);
+
+    for (let [dx, dz, w1, w2] of dirs) {
+      const nx = x + dx, nz = z + dz;
+      if (nx >= 0 && nz >= 0 && nx < n && nz < n && !mazeData[nz][nx].visited) {
+        mazeData[z][x].walls[w1] = 0;
+        mazeData[nz][nx].walls[w2] = 0;
+        carve(nx, nz);
+      }
+    }
+  }
+  carve(0, 0);
+}
+
+function buildMaze() {
+  walls.forEach(w => scene.remove(w));
+  walls = [];
+
+  const wallMat = new THREE.MeshStandardMaterial({ color: 0x1f2833, roughness: 0.7 });
+  const floorMat = new THREE.MeshStandardMaterial({ color: 0x0b0c10, roughness: 0.9 });
+
+  const halfTotalSize = (size * CELL) / 2;
+
+  // Floor
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(size * CELL, size * CELL), floorMat);
+  floor.rotation.x = -Math.PI / 2;
+  floor.position.set(halfTotalSize - CELL/2, 0, halfTotalSize - CELL/2);
+  walls.push(floor);
+  scene.add(floor);
+
+  // Generate Geometric Obstacles
+  for (let z = 0; z < size; z++) {
+    for (let x = 0; x < size; x++) {
+      const px = x * CELL;
+      const pz = z * CELL;
+
+      mazeData[z][x].walls.forEach((hasWall, i) => {
+        if (!hasWall) return;
+        const wall = new THREE.Mesh(new THREE.BoxGeometry(CELL, 7, 1.2), wallMat);
+        wall.position.y = 3.5;
+
+        if (i === 0) wall.position.set(px, 3.5, pz - CELL / 2);
+        if (i === 1) { wall.rotation.y = Math.PI / 2; wall.position.set(px + CELL / 2, 3.5, pz); }
+        if (i === 2) wall.position.set(px, 3.5, pz + CELL / 2);
+        if (i === 3) { wall.rotation.y = Math.PI / 2; wall.position.set(px - CELL / 2, 3.5, pz); }
+
+        scene.add(wall);
+        walls.push(wall);
+      });
+    }
+  }
+
+  // Clear running meteors
+  meteors.forEach(m => {
+    scene.remove(m.mesh);
+    scene.remove(m.indicator);
+  });
+  meteors = [];
+
+  // Reset character alignments
+  playerState.position.set(0, 2.5, 0); 
+  playerState.rotationY = 0;
+  orbGroup.position.set((size - 1) * CELL, 0.5, (size - 1) * CELL);
+  globby.position.set((size - 1) * CELL, 1.8, 0);
+
+  lastMeteorSpawnTime = performance.now();
+}
+
+/* =========================================================================
+   METEOR GENERATION COMPONENT
+========================================================================= */
+function spawnMeteor() {
+  const halfTotalSize = (size * CELL);
+  const targetX = Math.random() * halfTotalSize - (CELL / 2);
+  const targetZ = Math.random() * halfTotalSize - (CELL / 2);
+
+  const meteorGeom = new THREE.SphereGeometry(1.4, 16, 16);
+  const meteorMat = new THREE.MeshBasicMaterial({ color: 0xff6600 });
+  const meteorMesh = new THREE.Mesh(meteorGeom, meteorMat);
+  meteorMesh.position.set(targetX, 50, targetZ); 
+  
+  const light = new THREE.PointLight(0xff4400, 2, 10);
+  meteorMesh.add(light);
+  scene.add(meteorMesh);
+
+  const indGeom = new THREE.RingGeometry(0.1, 2.0, 32);
+  const indMat = new THREE.MeshBasicMaterial({ color: 0xff0000, side: THREE.DoubleSide, transparent: true, opacity: 0.6 });
+  const indMesh = new THREE.Mesh(indGeom, indMat);
+  indMesh.rotation.x = Math.PI / 2;
+  indMesh.position.set(targetX, 0.05, targetZ); 
+  scene.add(indMesh);
+
+  meteors.push({
+    mesh: meteorMesh,
+    indicator: indMesh,
+    targetX: targetX,
+    targetZ: targetZ,
+    speed: 0.4 + Math.random() * 0.3
+  });
+}
+
+/* =========================================================================
+   CONTROLS & PHYSICS (COLLISION)
+========================================================================= */
+const keys = {};
+window.addEventListener("keydown", e => {
+  keys[e.key.toLowerCase()] = true;
+  if (e.key.toLowerCase() === 'r') {
+    level = 1; // Explicitly drop to 1 on R reset
+    setupLevel(1); 
+  }
+});
+window.addEventListener("keyup", e => keys[e.key.toLowerCase()] = false);
+
+function checkCollision(targetPos) {
+  const pBox = new THREE.Box3().setFromCenterAndSize(
+    targetPos,
+    new THREE.Vector3(1.2, 3.8, 1.2)
+  );
+
+  for (const wall of walls) {
+    if (wall.geometry.type === "PlaneGeometry") continue;
+    const wBox = new THREE.Box3().setFromObject(wall);
+    if (pBox.intersectsBox(wBox)) return true;
+  }
+  return false;
+}
+
+/* =========================================================================
+   GAMEFLOW CONTROLLER (HANDLES LOSS/WIN TRIGGERS & RESETS)
+========================================================================= */
+const overlay = document.getElementById('screen-overlay');
+const title = document.getElementById('overlay-title');
+const desc = document.getElementById('overlay-desc');
+const startBtn = document.getElementById('start-btn');
+
+function startNextLevel() {
+  level += 1;
+  overlay.style.display = 'none';
+  setupLevel(level);
+}
+
+function restartFromLevelOne() {
+  level = 1; // Resets your level back to 1 upon death
+  overlay.style.display = 'none';
+  setupLevel(level);
+}
+
+startBtn.addEventListener('click', () => {
+  overlay.style.display = 'none';
+  gameRunning = true;
+  startAudioContext();
+  if(walls.length === 0) {
+    setupLevel(1);
+  } else {
+    lastMeteorSpawnTime = performance.now();
+  }
+});
+
+function setupLevel(lvl) {
+  level = lvl;
+  size = Math.min(15, 7 + level);
+  document.getElementById("level").innerText = `Level ${level}`;
+  generateMaze(size);
+  buildMaze();
+  gameRunning = true;
+  startAudioContext();
+}
+
+function triggerEndGame(condition) {
+  gameRunning = false;
+  proximityAudio.volume = 0; 
+  overlay.style.display = 'flex';
+  
+  if (condition === "win") {
+    title.innerText = "Level Cleared!";
+    title.style.color = "#66fcf1";
+    desc.innerText = "You successfully captured the black spatial orb before being crushed or caught!";
+    startBtn.innerText = "Advance to Next Level";
+    startBtn.onclick = startNextLevel;
+  } else if (condition === "meteor") {
+    title.innerText = "Struck by a smooth Globbeteor";
+    title.style.color = "#ff6600";
+    desc.innerText = `A burning Globbeteor crushed you from above! Progress reset back to Level 1.`;
+    startBtn.innerText = "Try Again";
+    startBtn.onclick = restartFromLevelOne;
+  } else {
+    title.innerText = "Globby Cot You!";
+    title.style.color = "#ff0033";
+    desc.innerText = `Globby killed you at level ${level}`;
+    startBtn.innerText = "Try Again";
+    startBtn.onclick = restartFromLevelOne;
+  }
+}
+
+/* =========================================================================
+   GAME ENGINE RUNTIME LOOP
+========================================================================= */
+function animate() {
+  requestAnimationFrame(animate);
+  const time = performance.now();
+
+  if (gameRunning) {
+    // --- Camera Rotation / Turn Controls ---
+    let rotationSpeed = 0.04;
+    if (keys["a"] || keys["arrowleft"])  playerState.rotationY += rotationSpeed;
+    if (keys["d"] || keys["arrowright"]) playerState.rotationY -= rotationSpeed;
+
+    // --- First-Person Movement Handling ---
+    let moveSpeed = 0.22;
+    let moving = false;
+    let moveDirection = 0;
+
+    if (keys["w"] || keys["arrowup"])   { moveDirection = 1;  moving = true; }
+    if (keys["s"] || keys["arrowdown"]) { moveDirection = -1; moving = true; }
+
+    if (moving) {
+      const nextPos = playerState.position.clone();
+      nextPos.x += Math.sin(playerState.rotationY) * moveSpeed * moveDirection;
+      nextPos.z += Math.cos(playerState.rotationY) * moveSpeed * moveDirection;
+
+      if (!checkCollision(nextPos)) {
+        playerState.position.copy(nextPos);
+      }
+    }
+
+    // --- Globby Enemy AI (Ghost Tracker - Passes Through Maze Walls) ---
+    const globbySpeed = 0.038 + (level * 0.006); 
+    const dirToPlayer = new THREE.Vector3().subVectors(playerState.position, globby.position).normalize();
+    
+    globby.scale.set(
+      1 + Math.sin(time * 0.005) * 0.08,
+      1 + Math.cos(time * 0.007) * 0.08,
+      1 + Math.sin(time * 0.005) * 0.08
+    );
+
+    globby.position.x += dirToPlayer.x * globbySpeed;
+    globby.position.z += dirToPlayer.z * globbySpeed;
+    globby.position.y = 1.8 + Math.sin(time * 0.003) * 0.2;
+
+    // --- Dynamic Proximity Sound Logic ---
+    const currentDistance = playerState.position.distanceTo(globby.position);
+    const maxAudioDistance = 45; 
+
+    if (currentDistance < maxAudioDistance) {
+      let targetVolume = 1 - (currentDistance / maxAudioDistance);
+      proximityAudio.volume = Math.max(0, Math.min(1, targetVolume));
+    } else {
+      proximityAudio.volume = 0;
+    }
+
+    // --- Meteor Runtimes & Trajectory Calculations ---
+    if (time - lastMeteorSpawnTime > spawnInterval) {
+      spawnMeteor();
+      lastMeteorSpawnTime = time;
+    }
+
+    for (let i = meteors.length - 1; i >= 0; i--) {
+      let m = meteors[i];
+      m.mesh.position.y -= m.speed;
+
+      m.indicator.material.opacity = 0.3 + Math.sin(time * 0.02) * 0.3;
+
+      let distXZ = Math.hypot(playerState.position.x - m.targetX, playerState.position.z - m.targetZ);
+      
+      if (m.mesh.position.y < 4.0 && m.mesh.position.y > 0 && distXZ < 2.0) {
+        triggerEndGame("meteor");
+        break;
+      }
+
+      if (m.mesh.position.y <= 0) {
+        scene.remove(m.mesh);
+        scene.remove(m.indicator);
+        meteors.splice(i, 1);
+      }
+    }
+
+    // --- Target Orb Animations ---
+    orbCore.position.y = 0.5 + Math.sin(time * 0.002) * 0.3;
+    orbRing.rotation.z += 0.02;
+
+    // --- Win / Loss Metric Checkers ---
+    if (playerState.position.distanceTo(orbGroup.position) < 2.5) {
+      triggerEndGame("win");
+    }
+    if (playerState.position.distanceTo(globby.position) < 2.2) {
+      triggerEndGame("lose");
+    }
+
+    // --- First Person Camera Placement ---
+    camera.position.copy(playerState.position);
+    
+    const lookTarget = playerState.position.clone().add(new THREE.Vector3(
+      Math.sin(playerState.rotationY) * 5,
+      0, 
+      Math.cos(playerState.rotationY) * 5
+    ));
+    camera.lookAt(lookTarget);
+  }
+
+  renderer.render(scene, camera);
+}
+
+// Initialization Run
+setupLevel(1);
+animate();
+
+window.addEventListener("resize", () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+</script>
+</body>
+</html>
