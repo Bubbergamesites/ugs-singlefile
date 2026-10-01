@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SURGEGUESSR</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230a0a0a'/%3E%3Cpath d='M18 3 7 18h7l-2 11 11-15h-7z' fill='%23ffeb00'/%3E%3C/svg%3E">
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--y:#ffeb00}
+body{font-family:'Rajdhani',sans-serif;background:#0a0a0a;color:#fff;min-height:100vh;overflow:hidden}
+[hidden]{display:none!important}
+button{font-family:inherit;cursor:pointer}
+:focus-visible{outline:2px solid var(--y);outline-offset:2px}
+
+.grid-bg{position:fixed;top:-50%;left:-50%;width:200%;height:200%;
+ background-image:linear-gradient(rgba(255,235,0,.25) 1px,transparent 1px),linear-gradient(90deg,rgba(255,235,0,.25) 1px,transparent 1px);
+ background-size:50px 50px;animation:gridMove 2s linear infinite;z-index:0;transform:perspective(500px) rotateX(60deg)}
+@keyframes gridMove{0%{transform:perspective(500px) rotateX(60deg) translateY(0)}100%{transform:perspective(500px) rotateX(60deg) translateY(50px)}}
+
+.screen{position:relative;z-index:10;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:40px 20px}
+.surge-panel{background:rgba(20,20,20,.85);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+ border:1px solid rgba(255,235,0,.3);border-radius:24px;padding:50px 40px;width:90%;max-width:600px;
+ box-shadow:0 0 60px rgba(255,235,0,.15),inset 0 1px 0 rgba(255,255,255,.05);position:relative;overflow:hidden}
+.surge-panel::before{content:'';position:absolute;top:0;left:-100%;width:100%;height:2px;
+ background:linear-gradient(90deg,transparent,#ffeb00,#ffff00,#ffeb00,transparent);animation:scan 2s linear infinite}
+@keyframes scan{0%{left:-100%}100%{left:100%}}
+
+.surge-title{font-family:'Orbitron',sans-serif;font-size:clamp(1.8rem,8vw,3.2rem);font-weight:900;text-align:center;margin-bottom:10px;
+ background:linear-gradient(135deg,#ffeb00,#ffff00 50%,#ffeb00);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;letter-spacing:5px}
+.tagline{text-align:center;color:rgba(255,235,0,.8);font-size:.9rem;letter-spacing:4px;text-transform:uppercase;margin-bottom:34px;font-weight:500}
+.rules{display:block;width:100%;text-align:center;padding:16px 25px;background:rgba(0,0,0,.5);border:1px solid rgba(255,235,0,.4);
+ border-radius:50px;color:rgba(255,235,0,.75);font-size:1rem;margin-bottom:34px}
+
+.surge-nav{display:grid;grid-template-columns:repeat(4,1fr);gap:20px}
+.nav-card{display:flex;flex-direction:column;align-items:center;gap:12px;padding:25px 10px;background:rgba(255,255,255,.03);
+ border:1px solid rgba(255,235,0,.2);border-radius:16px;color:inherit;transition:all .3s ease;position:relative;overflow:hidden}
+.nav-card::before{content:'';position:absolute;inset:0;background:linear-gradient(135deg,rgba(255,235,0,.1),transparent 60%);opacity:0;transition:opacity .3s}
+.nav-card:hover,.nav-card:focus-visible{transform:translateY(-5px);border-color:rgba(255,235,0,.5);box-shadow:0 10px 40px rgba(255,235,0,.15)}
+.nav-card:hover::before{opacity:1}
+.nav-icon{width:50px;height:50px;display:flex;align-items:center;justify-content:center;background:rgba(255,235,0,.1);
+ border:1px solid rgba(255,235,0,.3);border-radius:12px;font-size:1.5rem;transition:all .3s}
+.nav-card:hover .nav-icon{background:rgba(255,235,0,.2);box-shadow:0 0 20px rgba(255,235,0,.3);transform:scale(1.1)}
+.nav-label{color:rgba(255,255,255,.8);font-size:.75rem;font-weight:700;text-transform:uppercase;letter-spacing:2px;text-align:center}
+.nav-card:hover .nav-label{color:var(--y)}
+.nav-best{font-size:.7rem;color:rgba(255,235,0,.55);letter-spacing:1px}
+
+.status-bar{display:flex;justify-content:space-between;align-items:center;margin-top:30px;padding-top:20px;border-top:1px solid rgba(255,235,0,.15);font-size:.75rem;letter-spacing:2px;color:rgba(255,255,255,.6);text-transform:uppercase}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--y);box-shadow:0 0 10px var(--y);margin-right:8px;animation:blink 2s ease-in-out infinite}
+@keyframes blink{50%{opacity:.3}}
+
+/* game */
+#game{position:fixed;inset:0;z-index:20;background:#0a0a0a}
+#pano{position:absolute;inset:0;width:100%;height:100%;border:0}
+.hud{position:absolute;top:0;left:0;right:0;z-index:30;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 16px;
+ background:linear-gradient(rgba(10,10,10,.92),rgba(10,10,10,0));pointer-events:none}
+.hud>*{pointer-events:auto}
+.hud-logo{font-family:'Orbitron',sans-serif;font-weight:900;color:var(--y);letter-spacing:3px;font-size:.95rem}
+.hud-stats{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+.chip{background:rgba(20,20,20,.85);border:1px solid rgba(255,235,0,.3);border-radius:50px;padding:6px 16px;font-size:.9rem;font-weight:700;letter-spacing:2px;color:rgba(255,255,255,.85)}
+.chip b{font-family:'Orbitron',sans-serif;color:var(--y);font-weight:700;margin-left:6px}
+.hud-btns{display:flex;gap:8px}
+.ghost{background:rgba(20,20,20,.85);border:1px solid rgba(255,235,0,.3);border-radius:50px;color:rgba(255,235,0,.85);padding:6px 16px;font-size:.85rem;font-weight:700;letter-spacing:2px;text-transform:uppercase;transition:all .2s}
+.ghost:hover:not(:disabled){border-color:var(--y);box-shadow:0 0 20px rgba(255,235,0,.25)}
+.ghost:disabled{opacity:.35;cursor:default}
+
+#mapbox{position:absolute;z-index:40;right:16px;bottom:16px;width:min(320px,70vw);height:min(220px,34vh);
+ background:rgba(20,20,20,.9);border:1px solid rgba(255,235,0,.4);border-radius:16px;overflow:hidden;
+ box-shadow:0 0 40px rgba(255,235,0,.15);transition:width .25s ease,height .25s ease}
+#mapbox:not(.full):hover,#mapbox:not(.full):focus-within{width:min(620px,92vw);height:min(440px,62vh)}
+#mapbox.full{inset:64px 16px 170px 16px;width:auto;height:auto;transition:none}
+#map{position:absolute;inset:0;background:#0a0a0a}
+.leaflet-container{font-family:'Rajdhani',sans-serif;cursor:crosshair}
+.leaflet-control-attribution{background:rgba(10,10,10,.7)!important;color:rgba(255,255,255,.5)!important;font-size:9px}
+.leaflet-control-attribution a{color:rgba(255,235,0,.7)!important}
+.big-btn{font-family:'Orbitron',sans-serif;font-weight:700;letter-spacing:3px;text-transform:uppercase;font-size:.85rem;padding:14px 28px;
+ background:var(--y);color:#0a0a0a;border:0;border-radius:50px;transition:all .2s}
+.big-btn:hover:not(:disabled){box-shadow:0 0 30px rgba(255,235,0,.5);transform:translateY(-2px)}
+.big-btn:disabled{background:rgba(255,235,0,.15);color:rgba(255,235,0,.5);cursor:default}
+#guessBtn{position:absolute;z-index:1000;left:12px;right:12px;bottom:12px}
+#mapbox.full #guessBtn{display:none}
+.pin{width:18px;height:18px;border-radius:50%;border:3px solid #0a0a0a}
+.pin.g{background:var(--y);box-shadow:0 0 14px var(--y)}
+.pin.a{background:#fff;box-shadow:0 0 14px #fff}
+
+#result{position:absolute;z-index:50;left:50%;bottom:16px;transform:translateX(-50%);width:min(560px,92vw);padding:20px 28px;text-align:center}
+.surge-panel.slim{padding:20px 28px;border-radius:20px}
+.res-place{font-size:1rem;letter-spacing:3px;text-transform:uppercase;color:rgba(255,255,255,.7);margin-bottom:6px}
+.res-pts{font-family:'Orbitron',sans-serif;font-weight:900;font-size:2rem;color:var(--y)}
+.res-dist{color:rgba(255,255,255,.75);margin:2px 0 14px;font-size:1.05rem}
+
+.round-list{list-style:none;margin:26px 0}
+.round-list li{display:flex;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid rgba(255,235,0,.15);font-size:1rem}
+.round-list span:last-child{font-family:'Orbitron',sans-serif;color:var(--y);font-size:.85rem;white-space:nowrap}
+.final-score{font-family:'Orbitron',sans-serif;font-weight:900;font-size:2.6rem;text-align:center;color:var(--y)}
+.final-sub{text-align:center;color:rgba(255,255,255,.6);letter-spacing:3px;text-transform:uppercase;font-size:.8rem}
+.btn-row{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
+
+@media(max-width:560px){
+ .surge-panel{padding:36px 22px}.surge-nav{grid-template-columns:repeat(2,1fr)}
+ .hud-logo{display:none}
+}
+@media(prefers-reduced-motion:reduce){.grid-bg,.surge-panel::before,.dot{animation:none}}
+</style>
+</head>
+<body>
+<div class="grid-bg"></div>
+
+<main id="menu" class="screen">
+ <div class="surge-panel">
+  <h1 class="surge-title">SURGEGUESSR</h1>
+  <p class="tagline">Drop in. Look around. Pin it.</p>
+  <p class="rules">5 rounds &middot; up to 5,000 points each</p>
+  <div class="surge-nav" id="regions"></div>
+  <div class="status-bar"><span><span class="dot"></span>Street View ready</span><span id="menuBest"></span></div>
+ </div>
+</main>
+
+<section id="game" hidden>
+ <iframe id="pano" title="Street View" allowfullscreen referrerpolicy="no-referrer-when-downgrade"></iframe>
+ <div class="hud">
+  <div class="hud-logo">SURGEGUESSR</div>
+  <div class="hud-stats">
+   <div class="chip">Round<b id="hRound">1/5</b></div>
+   <div class="chip">Score<b id="hScore">0</b></div>
+  </div>
+  <div class="hud-btns">
+   <button class="ghost" id="skipBtn" title="Use this if the street view is blank">Skip view</button>
+   <button class="ghost" id="quitBtn">Quit</button>
+  </div>
+ </div>
+ <div id="mapbox"><div id="map"></div><button class="big-btn" id="guessBtn" disabled>Place a pin</button></div>
+ <div id="result" class="surge-panel slim" hidden>
+  <div class="res-place" id="rPlace"></div>
+  <div class="res-pts" id="rPts"></div>
+  <div class="res-dist" id="rDist"></div>
+  <button class="big-btn" id="nextBtn">Next round</button>
+ </div>
+</section>
+
+<main id="final" class="screen" hidden>
+ <div class="surge-panel">
+  <h2 class="surge-title" style="font-size:clamp(1.4rem,6vw,2.2rem)">RUN COMPLETE</h2>
+  <div class="final-score" id="fScore"></div>
+  <div class="final-sub" id="fSub"></div>
+  <ul class="round-list" id="fList"></ul>
+  <div class="btn-row"><button class="big-btn" id="againBtn">Play again</button><button class="ghost" id="menuBtn" style="padding:12px 24px">Menu</button></div>
+ </div>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+// name, lat, lng, region (eu / am / as / af)
+const LOCS=[
+['Eiffel Tower, Paris',48.8584,2.2945,'eu'],['Colosseum, Rome',41.8902,12.4922,'eu'],['Brandenburg Gate, Berlin',52.5163,13.3777,'eu'],
+['Plaza Mayor, Madrid',40.4155,-3.7074,'eu'],['Trafalgar Square, London',51.5080,-0.1281,'eu'],['Red Square, Moscow',55.7539,37.6208,'eu'],
+['Charles Bridge, Prague',50.0865,14.4114,'eu'],['Dam Square, Amsterdam',52.3731,4.8932,'eu'],['Syntagma Square, Athens',37.9755,23.7348,'eu'],
+['Hallgrimskirkja, Reykjavik',64.1417,-21.9266,'eu'],['Gamla Stan, Stockholm',59.3250,18.0710,'eu'],
+['Times Square, New York',40.7580,-73.9855,'am'],['Golden Gate Bridge, San Francisco',37.8199,-122.4783,'am'],['Copacabana, Rio de Janeiro',-22.9711,-43.1823,'am'],
+['Zocalo, Mexico City',19.4326,-99.1332,'am'],['Parliament Hill, Ottawa',45.4236,-75.7009,'am'],['Plaza de Mayo, Buenos Aires',-34.6083,-58.3712,'am'],
+['Plaza Mayor, Lima',-12.0464,-77.0300,'am'],['Plaza de Armas, Cusco',-13.5167,-71.9786,'am'],['Plaza de Bolivar, Bogota',4.5981,-74.0760,'am'],
+['Millennium Park, Chicago',41.8826,-87.6226,'am'],['Plaza de Armas, Santiago',-33.4378,-70.6504,'am'],
+['Shibuya Crossing, Tokyo',35.6595,139.7005,'as'],['Gyeongbokgung, Seoul',37.5796,126.9770,'as'],['Marina Bay, Singapore',1.2834,103.8607,'as'],
+['Sydney Opera House',-33.8568,151.2153,'as'],['Grand Palace, Bangkok',13.7500,100.4913,'as'],['Taj Mahal, Agra',27.1751,78.0421,'as'],
+['Sky Tower, Auckland',-36.8485,174.7633,'as'],['Hoan Kiem Lake, Hanoi',21.0285,105.8542,'as'],['Monas, Jakarta',-6.1754,106.8272,'as'],
+['Burj Khalifa, Dubai',25.1972,55.2744,'as'],
+['Table Mountain, Cape Town',-33.9249,18.4241,'af'],['Nairobi city centre',-1.2864,36.8172,'af'],['Johannesburg city centre',-26.2041,28.0473,'af']
+];
+// scale = distance (km) at which score decays by 1/e
+const REG={world:{n:'World',i:'🌍',f:null,s:1492.7},europe:{n:'Europe',i:'🏰',f:['eu'],s:600},americas:{n:'Americas',i:'🌎',f:['am'],s:1100},asia:{n:'Asia-Pac',i:'🏯',f:['as'],s:1100}};
+// ---- MAP TILES: paste your CARTO key here ----
+const CARTO_KEY='cb1_46wo_1_3c7febb3a5a8dc2d450f9f7b';
+// {key} is replaced by CARTO_KEY. If CARTO's docs give you a different tile URL, paste it here.
+const TILE_URL='https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png?key=cb1_46wo_1_3c7febb3a5a8dc2d450f9f7b';
+const ROUNDS=5;
+const $=id=>document.getElementById(id);
+let G=null,map=null,guess=null,layers=[],locked=false;
+
+function best(){try{return JSON.parse(localStorage.getItem('surgeguessr-best'))||{}}catch(e){return{}}}
+function saveBest(k,v){try{const b=best();if(v>(b[k]||0)){b[k]=v;localStorage.setItem('surgeguessr-best',JSON.stringify(b))}}catch(e){}}
+function renderMenu(){
+ const b=best();
+ $('regions').innerHTML=Object.entries(REG).map(([k,r])=>`<button class="nav-card" data-k="${k}"><span class="nav-icon">${r.i}</span><span class="nav-label">${r.n}</span><span class="nav-best">${b[k]?b[k].toLocaleString():'&nbsp;'}</span></button>`).join('');
+ const top=Math.max(0,...Object.values(b));
+ $('menuBest').textContent=top?'Best '+top.toLocaleString():'No runs yet';
+}
+function show(id){['menu','game','final'].forEach(s=>$(s).hidden=s!==id);document.querySelector('.grid-bg').hidden=id==='game'}
+const shuffle=a=>{for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a};
+const rad=d=>d*Math.PI/180;
+function km(a,b,c,d){const R=6371,x=rad(c-a),y=rad(d-b),h=Math.sin(x/2)**2+Math.cos(rad(a))*Math.cos(rad(c))*Math.sin(y/2)**2;return 2*R*Math.asin(Math.sqrt(h))}
+
+function start(k){
+ const r=REG[k];
+ G={k,r,q:shuffle(LOCS.filter(l=>!r.f||r.f.includes(l[3]))),i:0,extra:ROUNDS,total:0,log:[]};
+ show('game');initMap();loadRound();
+}
+function initMap(){
+ if(map)return;
+ map=L.map('map',{zoomControl:false,worldCopyJump:true,minZoom:1,attributionControl:true}).setView([20,0],1);
+ map.attributionControl.setPrefix(false);
+ L.tileLayer(TILE_URL.replace('{key}',encodeURIComponent(CARTO_KEY)),{attribution:'&copy; OpenStreetMap &copy; CARTO',maxZoom:18}).addTo(map);
+ map.on('click',e=>{
+  if(locked)return;
+  if(guess)guess.setLatLng(e.latlng);else guess=L.marker(e.latlng,{icon:L.divIcon({className:'',html:'<div class="pin g"></div>',iconSize:[18,18]})}).addTo(map);
+  $('guessBtn').disabled=false;$('guessBtn').textContent='Lock in guess';
+ });
+ $('mapbox').addEventListener('transitionend',()=>map.invalidateSize());
+}
+function loadRound(){
+ const l=G.q[G.i],h=Math.floor(Math.random()*360);
+ $('pano').src=`https://maps.google.com/maps?layer=c&cbll=${l[1]},${l[2]}&cbp=12,${h},,0,0&source=embed&output=svembed`;
+ layers.forEach(x=>map.removeLayer(x));layers=[];
+ if(guess){map.removeLayer(guess);guess=null}
+ locked=false;
+ $('mapbox').classList.remove('full');$('result').hidden=true;
+ $('guessBtn').disabled=true;$('guessBtn').textContent='Place a pin';
+ $('hRound').textContent=`${G.i+1}/${ROUNDS}`;$('hScore').textContent=G.total.toLocaleString();
+ $('skipBtn').disabled=G.extra>=G.q.length;
+ setTimeout(()=>{map.invalidateSize();map.setView([20,0],1)},50);
+}
+function lockIn(){
+ if(!guess||locked)return;
+ locked=true;
+ const l=G.q[G.i],p=guess.getLatLng(),d=km(l[1],l[2],p.lat,p.lng);
+ const pts=d<0.05?5000:Math.round(5000*Math.exp(-d/G.r.s));
+ G.total+=pts;G.log.push({n:l[0],d,pts});
+ $('hScore').textContent=G.total.toLocaleString();
+ $('mapbox').classList.add('full');
+ const a=L.marker([l[1],l[2]],{icon:L.divIcon({className:'',html:'<div class="pin a"></div>',iconSize:[18,18]})}).addTo(map);
+ const line=L.polyline([p,[l[1],l[2]]],{color:'#ffeb00',weight:2,dashArray:'6 8'}).addTo(map);
+ layers.push(a,line);
+ $('rPlace').textContent=l[0];$('rPts').textContent='+'+pts.toLocaleString();
+ $('rDist').textContent=d<1?'Under 1 km away':Math.round(d).toLocaleString()+' km away';
+ $('nextBtn').textContent=G.i===ROUNDS-1?'See results':'Next round';
+ $('result').hidden=false;
+ setTimeout(()=>{map.invalidateSize();map.fitBounds(L.latLngBounds([p,[l[1],l[2]]]),{padding:[60,60],maxZoom:6})},60);
+}
+function next(){
+ if(G.i<ROUNDS-1){G.i++;loadRound();return}
+ saveBest(G.k,G.total);renderMenu();
+ $('pano').src='about:blank';
+ $('fScore').textContent=G.total.toLocaleString();
+ $('fSub').textContent=`${G.r.n} · out of ${(ROUNDS*5000).toLocaleString()}`;
+ $('fList').innerHTML=G.log.map(r=>`<li><span>${r.n}</span><span>${Math.round(r.d).toLocaleString()} km · ${r.pts.toLocaleString()}</span></li>`).join('');
+ show('final');
+}
+function quit(){$('pano').src='about:blank';show('menu')}
+
+$('regions').addEventListener('click',e=>{const c=e.target.closest('.nav-card');if(c)start(c.dataset.k)});
+$('guessBtn').onclick=lockIn;
+$('nextBtn').onclick=next;
+$('skipBtn').onclick=()=>{if(locked||G.extra>=G.q.length)return;G.q[G.i]=G.q[G.extra++];loadRound()};
+$('quitBtn').onclick=quit;$('menuBtn').onclick=quit;
+$('againBtn').onclick=()=>start(G.k);
+window.addEventListener('keydown',e=>{
+ if(e.key==='Escape'&&!$('game').hidden)quit();
+ if(e.key==='Enter'&&!$('game').hidden){locked?next():lockIn()}
+});
+renderMenu();
+</script>
+</body>
+</html>
