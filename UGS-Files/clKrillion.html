@@ -1581,9 +1581,10 @@
             if (run && run.phase !== 'done') run.phase = 'abandoned';
             setScreen('home');
             targetDepth = 0;
-            app.innerHTML = `<section class="home"><div class="masthead"><h1>Krillion</h1><div class="subtitle">THE CUSTOM DESCENT</div><div class="desc">${pack.questions.length} prompts · ${pack.seconds} seconds each · rarer answers sink deeper</div></div><div class="launch-pad"><h2 class="game-title">${esc(pack.title)}</h2><p class="pack-desc">${esc(pack.description)}</p><button class="primary begin" id="start">▼ BEGIN DESCENT ▼</button><button class="pink begin" id="rand" style="margin-top:10px;font-size:22px;padding:14px 12px">✦ RANDOM DIVE ✦</button><div class="launch-tools"><button id="edit">EDIT GAME</button><button id="import">IMPORT PACK ↑</button><button id="share">EXPORT / SHARE ↗</button></div><div class="row small-tools"><button id="new">＋ New game</button><button id="restore">Restore draft</button><button id="help">▸ How to play</button></div><div class="standalone-note">ONE FILE · NO ACCOUNTS · NO INTERNET NEEDED</div></div></section>`;
+            app.innerHTML = `<section class="home"><div class="masthead"><h1>Krillion</h1><div class="subtitle">THE CUSTOM DESCENT</div><div class="desc">${pack.questions.length} prompts · ${pack.seconds} seconds each · rarer answers sink deeper</div></div><div class="launch-pad"><h2 class="game-title">${esc(pack.title)}</h2><p class="pack-desc">${esc(pack.description)}</p><button class="primary begin" id="start">▼ BEGIN DESCENT ▼</button><div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px"><button class="pink begin" id="daily" style="font-size:20px;padding:14px 6px;letter-spacing:2px">☀ DAILY DIVE</button><button class="pink begin" id="rand" style="font-size:20px;padding:14px 6px;letter-spacing:2px">∞ UNLIMITED</button></div><div class="launch-tools"><button id="edit">EDIT GAME</button><button id="import">IMPORT PACK ↑</button><button id="share">EXPORT / SHARE ↗</button></div><div class="row small-tools"><button id="new">＋ New game</button><button id="restore">Restore draft</button><button id="help">▸ How to play</button></div><div class="standalone-note">ONE FILE · NO ACCOUNTS · NO INTERNET NEEDED</div></div></section>`;
             $('#start').onclick = start;
             $('#rand').onclick = randomMenu;
+            $('#daily').onclick = dailyDive;
             $('#edit').onclick = () => editor(false);
             $('#new').onclick = () => editor(true);
             $('#import').onclick = () => $('#fileInput').click();
@@ -1912,15 +1913,8 @@
 
         function hud() {
             const n = pack.questions.length;
-            return `<div class="hud"><div class="hud-box"><div class="hud-label">DEPTH</div><div class="depth" id="depth">${(run.total*10).toLocaleString()}m</div></div><div class="rounds"><div class="round-blocks">${Array.from({length:Math.min(n,30)},(_,i)=>` < i class = "${i<run.index?'done':i===run.index?'active':''}" > < /i>`).join('')}</div > PROMPT $ {
-                Math.min(run.index + 1, n)
-            }
-            OF $ {
-                n
-            } < /div><div class="hud-box"><div class="hud-label">SCORE</div > < div class = "score"
-            id = "score" > $ {
-                run.total.toLocaleString()
-            } < /div></div > < /div>`}
+            return `<div class="hud"><div class="hud-box"><div class="hud-label">DEPTH</div><div class="depth" id="depth">${(run.total*10).toLocaleString()}m</div></div><div class="rounds"><div class="round-blocks">${Array.from({length:Math.min(n,30)},(_,i)=>`<i class="${i<run.index?'done':i===run.index?'active':''}"></i>`).join('')}</div>PROMPT ${Math.min(run.index+1,n)} OF ${n}</div><div class="hud-box"><div class="hud-label">SCORE</div><div class="score" id="score">${run.total.toLocaleString()}</div></div></div>`
+        }
 
             function start() {
                 stop();
@@ -2087,6 +2081,7 @@
                 stop();
                 setScreen('results');
                 run.phase = 'done';
+                if (pack.mode === 'daily') saveDaily();
                 targetDepth = 0;
                 splash();
                 const max = pack.questions.reduce((s, q) => s + Math.max(...q.answers.map(a => pointsOf(a))), 0);
@@ -2113,9 +2108,9 @@
                     });
                     el.querySelector('input').oninput = e => reveal(e.target.value)
                 });
-                $('#replay').onclick = () => pack.random ? randomDive(pack.questions.length) : start();
+                $('#replay').onclick = () => pack.random ? randomDive({ theme: pack.theme }) : start();
                 $('#back').onclick = home;
-                const txt = () => `Krillion — ${pack.title}\n${run.total*10} m • ${run.total}/${max} points\n` + run.results.map((r, i) => `${i+1}. ${r.answer?'◆':'◇'} ${r.points} pts${r.category?' · '+category(r.category).name:''}`).join('\n');
+                const txt = () => `Krillion — ${pack.title}\n${run.total*10} m • ${run.total}/${max} points\n${gridOf()}\n` + run.results.map((r, i) => `${i+1}. ${r.answer?'◆':'◇'} ${r.points} pts${r.category?' · '+category(r.category).name:''}`).join('\n');
                 $('#saveResults').onclick = () => download(txt(), slug() + '-results.txt', 'text/plain');
                 $('#copyResults').onclick = async () => {
                     try {
@@ -2131,9 +2126,9 @@
         // ===== RANDOM MODE: question bank =====
         // Each topic lists items from most obvious to most obscure (Name~tag=alias/alias). The bank derives ~2,000 ranked questions from them.
         const DATA = [
-            ['Name a country', {e:'Name a country in Europe',a:'Name a country in Asia',f:'Name a country in Africa',n:'Name a country in North or Central America',s:'Name a country in South America',o:'Name a country in Oceania'}, 'United States~n=USA/US/America,Canada~n,Mexico~n,Brazil~s,Argentina~s,France~e,Germany~e,Italy~e,Spain~e,United Kingdom~e=UK/Britain/England,Russia~e,China~a,Japan~a,India~a,Australia~o,Egypt~f,South Africa~f,Nigeria~f,Kenya~f,Ireland~e,Netherlands~e=Holland,Sweden~e,Norway~e,Greece~e,Portugal~e,Switzerland~e,Turkey~a,Thailand~a,South Korea~a,Vietnam~a,Indonesia~a,Philippines~a,Saudi Arabia~a,Israel~a,Iran~a,Iraq~a,Pakistan~a,Cuba~n,Chile~s,Peru~s,Colombia~s,Poland~e,Ukraine~e,Denmark~e,Finland~e,Austria~e,Belgium~e,Morocco~f,Ethiopia~f,Ghana~f,New Zealand~o,Venezuela~s,Jamaica~n,Czechia~e=Czech Republic,Hungary~e,Romania~e,Croatia~e,Iceland~e,Singapore~a,Malaysia~a,Nepal~a,Bangladesh~a,Afghanistan~a,Kazakhstan~a,Mongolia~a,Tanzania~f,Algeria~f,Libya~f,Senegal~f,Madagascar~f,Ecuador~s,Bolivia~s,Uruguay~s,Paraguay~s,Panama~n,Costa Rica~n,Fiji~o,Papua New Guinea~o,Mali~f,Chad~f,Niger~f,Gabon~f,Togo~f,Laos~a,Bhutan~a,Brunei~a,Tuvalu~o,Nauru~o,Palau~o,Kiribati~o,Suriname~s,Guyana~s,Belize~n,Honduras~n,Guatemala~n,Haiti~n,Estonia~e,Latvia~e,Lithuania~e,Slovenia~e,Slovakia~e,Albania~e,Malta~e,Luxembourg~e,Liechtenstein~e,Andorra~e,Monaco~e'],
-            ['Name an animal', {m:'Name a mammal',b:'Name a bird',s:'Name a sea creature',r:'Name a reptile or amphibian'}, 'Dog~m,Cat~m,Horse~m,Cow~m,Pig~m,Sheep~m,Chicken~b,Elephant~m,Lion~m,Tiger~m,Bear~m,Wolf~m,Fox~m,Rabbit~m,Monkey~m,Giraffe~m,Zebra~m,Dolphin~s,Whale~s,Shark~s,Eagle~b,Owl~b,Penguin~b,Duck~b,Snake~r,Frog~r,Crocodile~r,Turtle~r,Lizard~r,Deer~m,Squirrel~m,Mouse~m,Rat~m,Goat~m,Donkey~m,Camel~m,Kangaroo~m,Koala~m,Panda~m,Gorilla~m,Hippo~m=Hippopotamus,Rhino~m=Rhinoceros,Cheetah~m,Leopard~m,Hyena~m,Bat~m,Otter~m,Seal~s,Octopus~s,Crab~s,Lobster~s,Jellyfish~s,Starfish~s,Seahorse~s,Salmon~s,Parrot~b,Flamingo~b,Peacock~b,Swan~b,Crow~b,Pigeon~b,Hawk~b,Ostrich~b,Toucan~b,Pelican~b,Alligator~r,Gecko~r,Iguana~r,Chameleon~r,Cobra~r,Python~r,Salamander~r,Platypus~m,Armadillo~m,Sloth~m,Meerkat~m,Lemur~m,Walrus~s,Manatee~s,Narwhal~s,Axolotl~r,Pangolin~m,Okapi~m,Aardvark~m,Quokka~m,Capybara~m,Tapir~m,Kiwi~b,Puffin~b,Kookaburra~b,Cassowary~b,Wombat~m,Binturong~m,Fossa~m,Aye-aye~m,Saola~m'],
-            ['Name a fruit', {}, 'Apple,Banana,Orange,Strawberry,Grape,Watermelon,Pineapple,Mango,Peach,Pear,Cherry,Lemon,Lime,Blueberry,Raspberry,Plum,Kiwi,Coconut,Papaya,Avocado,Pomegranate,Apricot,Blackberry,Cantaloupe,Grapefruit,Tangerine,Fig,Cranberry,Nectarine,Guava,Passion fruit,Lychee,Dragon fruit,Date,Honeydew,Clementine,Mandarin,Persimmon,Starfruit,Mulberry,Gooseberry,Currant,Quince,Jackfruit,Durian,Rambutan,Kumquat,Tamarind,Soursop,Elderberry,Boysenberry,Pomelo,Plantain,Mangosteen,Ugli fruit,Cloudberry,Loquat,Longan,Salak,Jujube,Medlar,Feijoa,Cherimoya,Breadfruit,Ackee,Sapodilla,Yuzu,Bergamot,Physalis'],
+            ['Name a country', {e:'Name a country in Europe',a:'Name a country in Asia',f:'Name a country in Africa',n:'Name a country in North or Central America',s:'Name a country in South America',o:'Name a country in Oceania'}, 'United States~n=USA/US/America,Canada~n,Mexico~n,Brazil~s,Argentina~s,France~e,Germany~e,Italy~e,Spain~e,United Kingdom~e=UK/Britain/England,Russia~e,China~a,Japan~a,India~a,Australia~o,Egypt~f,South Africa~f,Nigeria~f,Kenya~f,Ireland~e,Netherlands~e=Holland,Sweden~e,Norway~e,Greece~e,Portugal~e,Switzerland~e,Turkey~a,Thailand~a,South Korea~a,Vietnam~a,Indonesia~a,Philippines~a,Saudi Arabia~a,Israel~a,Iran~a,Iraq~a,Pakistan~a,Cuba~n,Chile~s,Peru~s,Colombia~s,Poland~e,Ukraine~e,Denmark~e,Finland~e,Austria~e,Belgium~e,Morocco~f,Ethiopia~f,Ghana~f,New Zealand~o,Venezuela~s,Jamaica~n,Czechia~e=Czech Republic,Hungary~e,Romania~e,Croatia~e,Iceland~e,Singapore~a,Malaysia~a,Nepal~a,Bangladesh~a,Afghanistan~a,Kazakhstan~a,Mongolia~a,Tanzania~f,Algeria~f,Libya~f,Senegal~f,Madagascar~f,Ecuador~s,Bolivia~s,Uruguay~s,Paraguay~s,Panama~n,Costa Rica~n,Fiji~o,Papua New Guinea~o,Mali~f,Chad~f,Niger~f,Gabon~f,Togo~f,Laos~a,Bhutan~a,Brunei~a,^Tuvalu~o,^Nauru~o,Palau~o,Kiribati~o,Suriname~s,Guyana~s,Belize~n,Honduras~n,Guatemala~n,Haiti~n,Estonia~e,Latvia~e,Lithuania~e,Slovenia~e,Slovakia~e,Albania~e,Malta~e,Luxembourg~e,^Liechtenstein~e,Andorra~e,Monaco~e'],
+            ['Name an animal', {m:'Name a mammal',b:'Name a bird',s:'Name a sea creature',r:'Name a reptile or amphibian'}, 'Dog~m,Cat~m,Horse~m,Cow~m,Pig~m,Sheep~m,Chicken~b,Elephant~m,Lion~m,Tiger~m,Bear~m,Wolf~m,Fox~m,Rabbit~m,Monkey~m,Giraffe~m,Zebra~m,Dolphin~s,Whale~s,Shark~s,Eagle~b,Owl~b,Penguin~b,Duck~b,Snake~r,Frog~r,Crocodile~r,Turtle~r,Lizard~r,Deer~m,Squirrel~m,Mouse~m,Rat~m,Goat~m,Donkey~m,Camel~m,Kangaroo~m,Koala~m,Panda~m,Gorilla~m,Hippo~m=Hippopotamus,Rhino~m=Rhinoceros,Cheetah~m,Leopard~m,Hyena~m,Bat~m,Otter~m,Seal~s,Octopus~s,Crab~s,Lobster~s,Jellyfish~s,Starfish~s,Seahorse~s,Salmon~s,Parrot~b,Flamingo~b,Peacock~b,Swan~b,Crow~b,Pigeon~b,Hawk~b,Ostrich~b,Toucan~b,Pelican~b,Alligator~r,Gecko~r,Iguana~r,Chameleon~r,Cobra~r,Python~r,Salamander~r,^Platypus~m,Armadillo~m,Sloth~m,Meerkat~m,Lemur~m,Walrus~s,Manatee~s,^Narwhal~s,^Axolotl~r,^Pangolin~m,Okapi~m,Aardvark~m,Quokka~m,^Capybara~m,Tapir~m,Kiwi~b,Puffin~b,Kookaburra~b,Cassowary~b,Wombat~m,Binturong~m,Fossa~m,Aye-aye~m,Saola~m'],
+            ['Name a fruit', {}, 'Apple,Banana,Orange,Strawberry,Grape,Watermelon,Pineapple,Mango,Peach,Pear,Cherry,Lemon,Lime,Blueberry,Raspberry,Plum,Kiwi,Coconut,Papaya,Avocado,Pomegranate,Apricot,Blackberry,Cantaloupe,Grapefruit,Tangerine,Fig,Cranberry,Nectarine,Guava,Passion fruit,Lychee,^Dragon fruit,Date,Honeydew,Clementine,Mandarin,Persimmon,Starfruit,Mulberry,Gooseberry,Currant,Quince,Jackfruit,^Durian,Rambutan,Kumquat,Tamarind,Soursop,Elderberry,Boysenberry,Pomelo,Plantain,Mangosteen,Ugli fruit,Cloudberry,Loquat,Longan,Salak,Jujube,Medlar,Feijoa,Cherimoya,Breadfruit,Ackee,Sapodilla,Yuzu,Bergamot,Physalis'],
             ['Name a vegetable', {}, 'Carrot,Potato,Tomato,Onion,Broccoli,Lettuce,Cucumber,Corn,Spinach,Celery,Pepper,Garlic,Cabbage,Cauliflower,Peas,Mushroom,Zucchini,Eggplant,Pumpkin,Beet,Radish,Asparagus,Kale,Sweet potato,Turnip,Leek,Squash,Artichoke,Brussels sprouts,Green beans,Parsnip,Okra,Cassava,Celeriac,Fennel,Bok choy,Rutabaga,Shallot,Arugula,Chard,Endive,Kohlrabi,Watercress,Daikon,Jicama,Yam,Taro,Radicchio,Collard greens,Bamboo shoots,Salsify,Romanesco,Fiddlehead,Samphire,Cardoon,Mizuna,Tatsoi,Ramps,Rapini'],
             ['Name a US state', {}, 'California,Texas,Florida,New York,Hawaii,Alaska,Nevada,Arizona,Colorado,Illinois,Washington,Oregon,Georgia,Ohio,Pennsylvania,Michigan,Massachusetts,Virginia,Louisiana,Tennessee,New Jersey,Utah,Montana,Kentucky,Wyoming,Idaho,Maine,Minnesota,Wisconsin,Indiana,Missouri,Alabama,Oklahoma,Kansas,Iowa,Nebraska,Maryland,Connecticut,South Carolina,North Carolina,New Mexico,Mississippi,Arkansas,Vermont,New Hampshire,Delaware,Rhode Island,West Virginia,South Dakota,North Dakota'],
             ['Name a major world city', {}, 'Paris,London,New York=NYC/New York City,Tokyo,Rome,Los Angeles=LA,Sydney,Berlin,Madrid,Moscow,Beijing,Dubai,Toronto,Chicago,Barcelona,Amsterdam,Cairo,Mumbai,Bangkok,Istanbul,Singapore,Vienna,Prague,Athens,Lisbon,Dublin,Seoul,Hong Kong,San Francisco,Miami,Rio de Janeiro=Rio,Mexico City,Buenos Aires,Venice,Florence,Edinburgh,Boston,Las Vegas,Seattle,Cape Town,Nairobi,Delhi,Shanghai,Jakarta,Manila,Lima,Bogota,Santiago,Havana,Oslo,Stockholm,Copenhagen,Helsinki,Warsaw,Budapest,Brussels,Zurich,Geneva,Munich,Milan,Naples,Kyoto,Osaka,Melbourne,Auckland,Vancouver,Montreal,Houston,Dallas,Denver,Atlanta,Detroit,Philadelphia,Nashville,New Orleans,Reykjavik,Marrakesh,Lagos,Casablanca,Kathmandu,Hanoi,Kyiv=Kiev,Tehran,Baghdad,Jerusalem,Riga,Tallinn,Vilnius,Zagreb,Belgrade,Sofia,Bucharest'],
@@ -2147,11 +2142,51 @@
             ['Name a part of the human body', {}, 'Head,Hand,Foot,Arm,Leg,Eye,Ear,Nose,Mouth,Finger,Knee,Elbow,Shoulder,Neck,Back,Chest,Stomach,Heart,Brain,Toe,Hair,Tooth,Tongue,Lip,Skin,Thumb,Ankle,Wrist,Hip,Chin,Cheek,Forehead,Eyebrow,Eyelid,Lung,Liver,Kidney,Spine,Rib,Skull,Palm,Heel,Calf,Thigh,Waist,Armpit,Navel,Knuckle,Throat,Jaw,Temple,Nostril,Earlobe,Bicep,Tricep,Shin,Spleen,Pancreas,Gallbladder,Esophagus,Femur,Tibia,Fibula,Humerus,Sternum,Clavicle,Patella,Pelvis,Coccyx,Uvula,Cornea,Retina'],
             ['Name a flower', {}, 'Rose,Tulip,Daisy,Sunflower,Lily,Orchid,Daffodil,Carnation,Lavender,Violet,Iris,Poppy,Marigold,Peony,Hibiscus,Lotus,Jasmine,Pansy,Lilac,Hyacinth,Dahlia,Chrysanthemum,Geranium,Petunia,Zinnia,Snapdragon,Begonia,Camellia,Magnolia,Azalea,Gardenia,Buttercup,Dandelion,Foxglove,Lupine,Primrose,Aster,Anemone,Freesia,Gladiolus,Cosmos,Bluebell,Forget-me-not,Edelweiss,Amaryllis,Bougainvillea,Clematis,Hydrangea,Honeysuckle,Wisteria,Larkspur,Delphinium,Nasturtium,Periwinkle,Protea,Snowdrop,Crocus,Cyclamen,Fuchsia,Heather,Verbena,Yarrow,Celosia,Calendula,Ranunculus,Statice,Tansy'],
             ['Name a type of tree', {}, 'Oak,Pine,Maple,Birch,Elm,Willow,Palm,Cedar,Redwood,Spruce,Fir,Ash,Beech,Cherry,Apple,Walnut,Poplar,Cypress,Hickory,Sycamore,Eucalyptus,Magnolia,Baobab,Banyan,Mahogany,Teak,Sequoia,Aspen,Hemlock,Chestnut,Juniper,Larch,Hazel,Holly,Linden,Alder,Dogwood,Mulberry,Olive,Acacia,Bamboo,Ginkgo,Mangrove,Yew,Rowan,Hawthorn,Balsa,Ebony,Sandalwood,Cottonwood,Locust,Tamarack,Buckeye,Sassafras,Mesquite,Joshua tree,Kapok,Jacaranda,Boxwood,Hornbeam,Sweetgum,Tulip tree,Whitebeam,Wollemi pine,Monkey puzzle'],
-            ['Name a language', {}, 'English,Spanish,French,German,Mandarin=Chinese,Japanese,Italian,Portuguese,Russian,Arabic,Hindi,Korean,Latin,Greek,Dutch,Swedish,Turkish,Polish,Hebrew,Vietnamese,Thai,Bengali,Urdu,Persian=Farsi,Swahili,Norwegian,Danish,Finnish,Czech,Hungarian,Romanian,Ukrainian,Indonesian,Tagalog,Punjabi,Tamil,Telugu,Cantonese,Irish,Welsh,Icelandic,Hawaiian,Maori,Zulu,Yoruba,Hausa,Amharic,Somali,Afrikaans,Catalan,Basque,Esperanto,Sanskrit,Mongolian,Nepali,Burmese,Khmer,Lao,Malay,Georgian,Armenian,Albanian,Estonian,Latvian,Lithuanian,Serbian,Croatian,Bulgarian,Slovak,Slovenian,Maltese,Navajo,Quechua,Guarani,Inuktitut,Cherokee'],
+            ['Name a language', {}, 'English,Spanish,French,German,Mandarin=Chinese,Japanese,Italian,Portuguese,Russian,Arabic,Hindi,Korean,Latin,Greek,Dutch,Swedish,Turkish,Polish,Hebrew,Vietnamese,Thai,Bengali,Urdu,Persian=Farsi,Swahili,Norwegian,Danish,Finnish,Czech,Hungarian,Romanian,Ukrainian,Indonesian,Tagalog,Punjabi,Tamil,Telugu,Cantonese,Irish,Welsh,Icelandic,Hawaiian,Maori,Zulu,Yoruba,Hausa,Amharic,Somali,Afrikaans,Catalan,Basque,^Esperanto,Sanskrit,Mongolian,Nepali,Burmese,Khmer,Lao,Malay,Georgian,Armenian,Albanian,Estonian,Latvian,Lithuanian,Serbian,Croatian,Bulgarian,Slovak,Slovenian,Maltese,Navajo,Quechua,Guarani,Inuktitut,Cherokee'],
             ['Name a type of cheese', {}, 'Cheddar,Mozzarella,Parmesan,Swiss,Brie,Gouda,Feta,Provolone,Blue cheese,Cream cheese,Cottage cheese,Monterey Jack,Colby,Ricotta,Gruyere,Camembert,Havarti,Muenster,Mascarpone,Pepper Jack,Gorgonzola,Halloumi,Roquefort,Edam,Emmental,Manchego,Asiago,Romano,Stilton,Paneer,Burrata,Fontina,Jarlsberg,Limburger,Raclette,Pecorino,Cotija,Queso fresco,Boursin,Comte,Taleggio,Leicester,Wensleydale,Cheshire,Appenzeller,Reblochon,Epoisses,Vacherin,Oaxaca,Brunost'],
             ['Name a river', {}, 'Nile,Amazon,Mississippi,Thames,Rhine,Danube,Yangtze,Ganges,Colorado,Hudson,Missouri,Ohio,Seine,Volga,Mekong,Congo,Niger,Tigris,Euphrates,Rio Grande,Yellow River,Indus,Jordan,Tiber,Loire,Rhone,Elbe,Oder,Dnieper,Don,Ob,Lena,Yenisei,Amur,Zambezi,Orinoco,Parana,Murray,St. Lawrence,Columbia,Potomac,Delaware,Shannon,Tyne,Severn,Avon,Po,Ebro,Tagus,Douro,Vistula,Neva,Irrawaddy,Brahmaputra,Limpopo,Orange,Snake,Yukon,Mackenzie,Arkansas,Tennessee,Sacramento,Willamette'],
             ['Name a US president (last name)', {}, 'Lincoln,Washington,Kennedy,Roosevelt,Obama,Trump,Biden,Bush,Clinton,Reagan,Jefferson,Nixon,Carter,Truman,Eisenhower,Adams,Jackson,Johnson,Ford,Hoover,Wilson,Taft,Grant,Madison,Monroe,Harrison,Tyler,Polk,Taylor,Fillmore,Pierce,Buchanan,Hayes,Garfield,Arthur,Cleveland,McKinley,Coolidge,Harding,Van Buren']
         ];
+
+        DATA.push(
+            ['Name a moon in our solar system', {}, `Moon=Luna,Titan,Europa,Io,Ganymede,Callisto,Phobos,Deimos,Triton,Enceladus,Charon,Mimas,Rhea,Iapetus,Dione,Tethys,Oberon,Titania,Umbriel,Ariel,Miranda,Nereid,Proteus,Hyperion,Phoebe,Amalthea,Himalia,Puck,Larissa,Pan,Atlas,Prometheus,Pandora,Epimetheus,Janus,Telesto,Calypso,Helene,$Kerberos`],
+            ['Name a famous painter', {}, `Picasso,Van Gogh=Vincent van Gogh,Leonardo da Vinci=Da Vinci/Leonardo,Michelangelo,Monet,Rembrandt,Salvador Dali=Dali/Dalí,Andy Warhol=Warhol,Frida Kahlo=Kahlo,Jackson Pollock=Pollock,Edvard Munch=Munch,Raphael,Gustav Klimt=Klimt,Georgia O'Keeffe=O'Keeffe/OKeeffe,Edgar Degas=Degas,Paul Cezanne=Cezanne/Cézanne,Henri Matisse=Matisse,Vermeer=Johannes Vermeer,Caravaggio,Botticelli,Goya,Velazquez=Velázquez,Titian,Mark Rothko=Rothko,Rene Magritte=Magritte/René Magritte,Hokusai,Kandinsky=Wassily Kandinsky,Basquiat=Jean-Michel Basquiat,Edward Hopper=Hopper,Seurat=Georges Seurat,Gauguin=Paul Gauguin,Edouard Manet=Manet/Édouard Manet,Turner=J.M.W. Turner,Constable=John Constable,Hieronymus Bosch=Bosch,Pieter Bruegel=Bruegel/Brueghel,Marc Chagall=Chagall,Modigliani,Joan Miro=Miro/Joan Miró,Piet Mondrian=Mondrian,M.C. Escher=Escher,Artemisia Gentileschi=Gentileschi,Remedios Varo,$Hilma af Klint`],
+            ['Name a Shakespeare play', {}, `Romeo and Juliet,Hamlet,Macbeth,Othello,King Lear,A Midsummer Night's Dream=Midsummer Night's Dream/Midsummer Nights Dream,The Tempest=Tempest,Julius Caesar,Twelfth Night,Much Ado About Nothing,The Merchant of Venice=Merchant of Venice,As You Like It,Richard III,Henry V,Antony and Cleopatra,Coriolanus,Titus Andronicus,The Taming of the Shrew=Taming of the Shrew,Measure for Measure,The Winter's Tale=Winter's Tale,Cymbeline,Pericles,Timon of Athens,Troilus and Cressida,All's Well That Ends Well,The Comedy of Errors=Comedy of Errors,Love's Labour's Lost,King John,Richard II,Henry VIII,The Two Gentlemen of Verona=Two Gentlemen of Verona,The Merry Wives of Windsor=Merry Wives of Windsor,Henry IV,Henry VI,$The Two Noble Kinsmen=Two Noble Kinsmen`],
+            ['Name a Greek or Roman god or goddess', {}, `Zeus,Jupiter,Poseidon,Neptune,Hades,Athena,Apollo,Ares,Mars,Aphrodite,Venus,Hermes,Mercury,Artemis,Dionysus,Hera,Demeter,Hephaestus,Persephone,Eros,Pan,Hecate,Nike,Janus,Bacchus,Vulcan,Minerva,Juno,Pluto,Saturn,Cronus,Gaia,Uranus,Nemesis,Morpheus,Hypnos,Thanatos,Iris,Helios,Eos,Aeolus,Tyche,Fortuna,Vesta,Hestia,Ceres,Diana,Cupid,Aurora,Selene,Hebe,Eris,$Momus`],
+            ['Name a famous scientist (last name)', {}, `Einstein,Newton,Darwin,Curie,Galileo,Hawking,Tesla,Edison,Pasteur,Faraday,Bohr,Feynman,Mendel,Copernicus,Kepler,Maxwell,Fleming,Franklin,Turing,Lovelace,Planck,Heisenberg,Schrodinger=Schrödinger,Hubble,Sagan,Goodall,Lavoisier,Mendeleev,Pavlov,Fermi,Oppenheimer,Rutherford,Hooke,Boyle,Dalton,Volta,Ampere=Ampère,Ohm,Joule,Kelvin,Celsius,Fahrenheit,Hertz,Noether,Hopper,Meitner,Chandrasekhar,$Ramanujan`],
+            ['Name a programming language', {}, `Python,JavaScript=JS,Java,C++=Cpp,C,C#=C Sharp,Ruby,PHP,Swift,Go=Golang,Rust,Kotlin,TypeScript,Perl,Lua,R,MATLAB,Scala,Haskell,Dart,SQL,Bash,Assembly,COBOL,Fortran,Pascal,BASIC,Lisp,Prolog,Erlang,Elixir,Clojure,Julia,Objective-C,Visual Basic,Scratch,Smalltalk,OCaml,Ada,Racket,Zig,Nim,^Brainfuck=BF,$Malbolge`],
+            ['Name a board game or card game', {}, `Monopoly,Chess,Checkers=Draughts,Scrabble,Clue=Cluedo,Risk,Uno,Poker,Go Fish,Solitaire,Backgammon,Battleship,Connect Four=Connect 4,Jenga,Trivial Pursuit,Sorry,Candy Land,Operation,Mouse Trap,Yahtzee,Blackjack,Bridge,Hearts,Spades,Rummy,Cribbage,Catan=Settlers of Catan,Ticket to Ride,Carcassonne,Pandemic,Dominion,Codenames,Azul,Mahjong,Dominoes,Othello=Reversi,Stratego,Pictionary,Taboo,Scattergories,Mancala,Shogi,Xiangqi,Nine Men's Morris=Morris,Hnefatafl=Tafl,Senet,Parcheesi=Pachisi,Agricola,$Twilight Imperium`],
+            ['Name a herb or spice', {}, `Pepper=Black pepper,Cinnamon,Basil,Oregano,Parsley,Thyme,Rosemary,Paprika,Cumin,Ginger,Nutmeg,Cloves,Mint,Dill,Sage,Cilantro=Coriander,Turmeric,Chili powder=Chili,Cayenne,Vanilla,Cardamom,Bay leaf,Tarragon,^Saffron,Fennel seed,Mustard seed,Allspice,Star anise,Chives,Marjoram,Lemongrass,Sumac,Zaatar=Za'atar,Fenugreek,Caraway,Juniper berry,Asafoetida=Hing,Galangal,Annatto,Nigella=Black cumin,Grains of paradise,Long pepper,Mace,Lovage,Epazote,Sichuan pepper=Szechuan pepper`],
+            ['Name a type of pasta', {}, `Spaghetti,Macaroni,Penne,Lasagna,Fettuccine,Ravioli,Linguine,Rigatoni,Tortellini,Fusilli,Farfalle,Orzo,Angel hair=Capellini,Gnocchi,Rotini,Ziti,Cannelloni,Manicotti,Bucatini,Pappardelle,Tagliatelle,Orecchiette,Conchiglie=Shells,Cavatappi,Ditalini,Tagliolini,Paccheri,Strozzapreti,Trofie,Casarecce,Radiatori,Mafalde,Gemelli,Campanelle,Fregola,Pici,Bigoli,Malloreddus,Cappelletti,Anelli,Lumache,Garganelli,Culurgiones,$Corzetti`],
+            ['Name a bird', {}, `Robin,Eagle,Owl,Sparrow,Crow,Duck,Penguin,Parrot,Pigeon,Hawk,Swan,Flamingo,Peacock,Cardinal,Blue jay,Hummingbird,Woodpecker,Seagull,Falcon,Goose,Turkey,Ostrich,Vulture,Pelican,Heron,Stork,Crane,Kingfisher,Toucan,Raven,Magpie,Finch,Swallow,Albatross,Condor,Kiwi,Emu,Puffin,Cormorant,Osprey,^Dodo,^Shoebill,^Kakapo,Lyrebird,Hoatzin,Quetzal,Secretarybird,Cassowary,Frogmouth,Oilbird,$Tinamou`],
+            ['Name an insect or arachnid', {}, `Ant,Bee,Butterfly,Spider,Fly,Mosquito,Ladybug=Ladybird,Cockroach,Beetle,Wasp,Grasshopper,Cricket,Dragonfly,Moth,Flea,Tick,Scorpion,Termite,Praying mantis=Mantis,Firefly,Cicada,Locust,Tarantula,Hornet,Aphid,Earwig,Stick insect,Louse=Lice,Silverfish,Weevil,Mayfly,Katydid,Lacewing,Dung beetle,Stag beetle,Water strider,Antlion,Harvestman=Daddy longlegs,Mite,Thrips,Assassin bug,Whip scorpion,Camel spider,$Solifuge`],
+            ['Name a dinosaur', {}, `Tyrannosaurus rex=T. rex/T-Rex/Tyrannosaurus,Velociraptor,Triceratops,Stegosaurus,Brachiosaurus,Diplodocus,Spinosaurus,Ankylosaurus,Allosaurus,Brontosaurus,Apatosaurus,Iguanodon,Parasaurolophus,Compsognathus,Gallimimus,Dilophosaurus,Carnotaurus,Giganotosaurus,Pachycephalosaurus,Archaeopteryx,Megalosaurus,Argentinosaurus,Microraptor,Therizinosaurus,Utahraptor,Deinonychus,Oviraptor,Maiasaura,Baryonyx,Coelophysis,Protoceratops,Albertosaurus,Troodon,Kentrosaurus,Ceratosaurus,Plateosaurus,Edmontosaurus,Styracosaurus,Amargasaurus,Yutyrannus,Sinosauropteryx,Nigersaurus,Mamenchisaurus,$Kosmoceratops`],
+            ['Name a gemstone or mineral', {}, `Diamond,Ruby,Emerald,Sapphire,Pearl,Opal,Amethyst,Topaz,Garnet,Turquoise,Jade,Quartz,Onyx,Obsidian,Aquamarine,Peridot,Citrine,Lapis lazuli,Moonstone,Tanzanite,Agate,Jasper,Malachite,Tourmaline,Zircon,Amber,Alexandrite,Rhodonite,Spinel,Fluorite,Calcite,Gypsum,Pyrite=Fool's gold,Talc,Feldspar,Mica,Beryl,Bloodstone,Carnelian,Chalcedony,Sodalite,Kunzite,Larimar,Benitoite,Taaffeite,$Painite`],
+            ['Name a Greek letter', {}, `Alpha,Beta,Gamma,Delta,Omega,Sigma,Pi,Theta,Lambda,Epsilon,Phi,Psi,Mu,Zeta,Eta,Iota,Kappa,Nu,Xi,Omicron,Rho,Tau,Chi,$Upsilon`],
+            ['Name a Disney or Pixar animated movie', {}, `The Lion King=Lion King,Frozen,Aladdin,Beauty and the Beast,Cinderella,Moana,Toy Story,Finding Nemo,The Little Mermaid=Little Mermaid,Snow White=Snow White and the Seven Dwarfs,Tangled,Up,Coco,Mulan,Encanto,Zootopia=Zootropolis,Inside Out,Ratatouille,WALL-E=Wall-E/Wall E,Monsters Inc,Cars,Brave,Bambi,Dumbo,Pinocchio,Sleeping Beauty,Peter Pan,Lady and the Tramp,101 Dalmatians=One Hundred and One Dalmatians,Pocahontas,Hercules,Tarzan,Lilo and Stitch=Lilo & Stitch,The Jungle Book=Jungle Book,Big Hero 6,Wreck-It Ralph=Wreck It Ralph,Bolt,Robin Hood,The Aristocats=Aristocats,Fantasia,The Sword in the Stone=Sword in the Stone,Treasure Planet,Atlantis,The Black Cauldron=Black Cauldron,Brother Bear,Home on the Range,The Fox and the Hound=Fox and the Hound,Meet the Robinsons,$Saludos Amigos`],
+            ['Name an ocean, sea or lake', {}, `Pacific Ocean=Pacific,Atlantic Ocean=Atlantic,Indian Ocean,Arctic Ocean=Arctic,Southern Ocean,Mediterranean Sea=Mediterranean,Caribbean Sea=Caribbean,Red Sea,Black Sea,Dead Sea,Baltic Sea,North Sea,South China Sea,Arabian Sea,Caspian Sea,Sea of Japan,Bering Sea,Coral Sea,Tasman Sea,Adriatic Sea,Aegean Sea,Irish Sea,Sargasso Sea,Barents Sea,Weddell Sea,Ross Sea,Lake Superior,Lake Michigan,Lake Victoria,Lake Baikal,Lake Tanganyika,Lake Erie,Lake Huron,Lake Ontario,Great Bear Lake,Lake Titicaca,Lake Geneva,Lake Como,Loch Ness,Lake Tahoe,Lake Eyre,Lake Malawi,Lake Chad,Aral Sea,Lake Natron,Lake Maracaibo,$Sea of Azov`],
+            ['Name a mountain or mountain range', {}, `Mount Everest=Everest,Mount Kilimanjaro=Kilimanjaro,Alps,Rocky Mountains=Rockies,Himalayas=Himalaya,Andes,K2,Mount Fuji=Fuji,Matterhorn,Denali=Mount McKinley,Mont Blanc,Appalachian Mountains=Appalachians,Mount Olympus=Olympus,Mount Vesuvius=Vesuvius,Mount St. Helens=St. Helens/Mount Saint Helens,Pyrenees,Ural Mountains=Urals,Atlas Mountains=Atlas,Carpathians,Caucasus,Sierra Nevada,Mount Elbrus=Elbrus,Aconcagua,Mount Etna=Etna,Ben Nevis,Table Mountain,Mount Rainier=Rainier,Mount Whitney=Whitney,Kangchenjunga,Lhotse,Makalu,Annapurna,Cho Oyu,Dhaulagiri,Nanga Parbat,Aoraki=Mount Cook,Mount Kosciuszko=Kosciuszko,Vinson Massif,Puncak Jaya,Mount Ararat=Ararat,Mount Erebus=Erebus,Mauna Kea,Mauna Loa,Eiger,Monte Rosa,Piz Bernina,Mount Toubkal=Toubkal,$Gran Paradiso`],
+            ['Name a famous landmark or monument', {}, `Eiffel Tower,Statue of Liberty,Big Ben,Colosseum,Great Wall of China=Great Wall,Taj Mahal,Pyramids of Giza=Great Pyramid/Pyramids,Golden Gate Bridge,Mount Rushmore,Stonehenge,Sydney Opera House,Machu Picchu,Leaning Tower of Pisa=Tower of Pisa,Parthenon,Christ the Redeemer,Empire State Building,Buckingham Palace,Tower Bridge,Angkor Wat,Petra,Burj Khalifa,Space Needle,CN Tower,Brandenburg Gate,Sagrada Familia=Sagrada Família,Acropolis,Neuschwanstein Castle=Neuschwanstein,Chichen Itza,Alhambra,Westminster Abbey,Hagia Sophia,Forbidden City,Kremlin,Great Sphinx=Sphinx,Moai=Easter Island heads,Louvre,Arc de Triomphe,Notre-Dame=Notre Dame,Potala Palace,Borobudur,Tower of London,Rialto Bridge,Atomium,Petronas Towers,Mont-Saint-Michel=Mont Saint Michel,Meteora,Skellig Michael,Himeji Castle,Shwedagon Pagoda,Lalibela,$Gobekli Tepe=Göbekli Tepe`],
+            ['Name a famous composer', {}, `Mozart,Beethoven,Bach,Chopin,Tchaikovsky,Vivaldi,Brahms,Handel,Schubert,Haydn,Liszt,Debussy,Wagner,Verdi,Mahler,Stravinsky,Rachmaninoff,Dvorak=Dvořák,Mendelssohn,Schumann,Strauss,Ravel,Puccini,Rossini,Grieg,Sibelius,Bizet,Prokofiev,Shostakovich,Copland,Gershwin,Bernstein,Holst,Elgar,Saint-Saens=Saint-Saëns,Satie,Berlioz,Mussorgsky,Bruckner,Purcell,Monteverdi,Palestrina,Telemann,Scarlatti,Ligeti,Messiaen,Penderecki,Arvo Part=Arvo Pärt/Part,Xenakis,Hildegard von Bingen=Hildegard,Scriabin,$Gesualdo`],
+            ['Name an item of clothing', {}, `Shirt,Pants=Trousers,Jeans,Dress,Skirt,Jacket,Coat,Sweater,Hat,Socks,Shoes,Shorts,T-shirt=Tee,Hoodie,Scarf,Gloves,Belt,Tie,Suit,Boots,Sandals,Pajamas=Pyjamas,Underwear,Cardigan,Vest,Leggings,Blouse,Poncho,Kilt,Sarong,Kimono,Tuxedo,Overalls,Cape,Cloak,Corset,Bowtie,Beret,Fedora,Toga,Tunic,Bolero,Kaftan=Caftan,Cummerbund,Gaiters,Spats,Wimple,Doublet,Pantaloons,Sporran,Ascot,Jodhpurs,Culottes,Dirndl,Lederhosen,Obi,Cravat,Fascinator,Snood,$Pelisse`],
+            ['Name a type of bread or pastry', {}, `Baguette,Croissant,Bagel,Sourdough,Ciabatta,Pita,Naan,Tortilla,Focaccia,Rye,Brioche,Pretzel,Donut=Doughnut,Muffin,Scone,Danish,Cornbread,Challah,English muffin,Flatbread,Pumpernickel,Roti,Chapati,Lavash,Injera,Matzo,Bao,Panettone,Stollen,Babka,Pandesal,Arepa,Soda bread,Crumpet,Bialy,Kaiser roll,Bannock,Lefse,Pao de queijo=Pão de queijo,Fougasse,Zopf,Pogaca=Pogača,Khachapuri,Barbari,Sangak,Michetta,Anadama,Melonpan,$Kouign-amann`],
+            ['Name a famous explorer', {}, `Christopher Columbus=Columbus,Ferdinand Magellan=Magellan,Marco Polo,James Cook=Captain Cook/Cook,Neil Armstrong=Armstrong,Vasco da Gama,Roald Amundsen=Amundsen,David Livingstone=Livingstone,Edmund Hillary=Hillary,Ponce de Leon=Ponce de León,Hernan Cortes=Cortes/Cortés,Pizarro=Francisco Pizarro,Leif Erikson=Erikson/Leif Ericson,Ernest Shackleton=Shackleton,Robert Falcon Scott=Scott,Robert Peary=Peary,Henry Hudson=Hudson,Sacagawea,Ibn Battuta,Zheng He,Francis Drake=Drake,Walter Raleigh=Raleigh,Balboa=Vasco Nunez de Balboa,John Cabot=Cabot,Jacques Cartier=Cartier,Samuel de Champlain=Champlain,Tenzing Norgay=Tenzing,Mungo Park,Abel Tasman=Tasman,Vitus Bering=Bering,Bartolomeu Dias=Dias,Pedro Cabral=Cabral,Henry Morton Stanley=Stanley,Richard Burton=Burton,John Hanning Speke=Speke,Fridtjof Nansen=Nansen,Thor Heyerdahl=Heyerdahl,Douglas Mawson=Mawson,Matthew Henson=Henson,Xuanzang,$Pytheas`],
+            ['Name a hand tool', {}, `Hammer,Screwdriver,Wrench,Saw,Pliers,Drill,Axe,Shovel,Rake,Tape measure,Level,Chisel,Sandpaper,Crowbar,Mallet,Clamp,Vise=Vice,Hacksaw,Jigsaw,Awl,Hand plane=Plane,Trowel,Pickaxe,Sledgehammer,Wire cutters,Socket wrench=Ratchet,Allen key=Hex key,Staple gun,Caulk gun,Soldering iron,Router,Lathe,Adze,Froe,Spokeshave,Drawknife,Auger,Bradawl,Scribe,Plumb bob,Stud finder,Pry bar,Gouge,Maul,Tin snips,Pipe wrench,Mattock,Cold chisel,$Marlinspike`]
+        );
+        const THEMES = {
+            Geography: /country|US state|city|river|ocean|mountain|landmark/i,
+            Food: /fruit|vegetable|cheese|pasta|bread|spice/i,
+            Nature: /animal|bird|insect|dinosaur|flower|tree|dog/i,
+            Science: /element|moon|scientist|gemstone|body|Greek letter|programming/i,
+            Culture: /painter|Shakespeare|god|composer|language|instrument|Disney|explorer|president/i,
+            Everyday: /color|sport|car brand|job|clothing|tool|board game/i
+        };
+        const themeOf = d => Object.keys(THEMES).find(k => THEMES[k].test(DATA[d][0])) || 'Culture';
+        const EMOJI = {plankton: '⬜', 'too-clever': '🟧', schooler: '🟦', rare: '🟩', 'deep-cut': '🟪', krillion: '🟥'};
+        const gridOf = () => run.results.map(r => EMOJI[r.category] || '⬛').join('');
+        const todayKey = () => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0') };
+        const hashStr = t => { let h = 2166136261; for (const ch of t) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619) } return h >>> 0 };
+        const seeded = seed => { let a = seed >>> 0; return () => { a = a + 0x6D2B79F5 >>> 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296 } };
         const TIER_IDS = ['plankton', 'schooler', 'rare', 'deep-cut', 'krillion'];
         let BANK = null,
             seenQ = new Set(),
@@ -2162,11 +2197,18 @@
                 sig = new Set(),
                 L = 'abcdefghijklmnopqrstuvwxyz'.split('');
             DATA.forEach(([stem, tags, str], di) => {
-                const items = str.split(',').map(s => {
+                const parts = str.split(',');
+                const items = parts.map((s, ix) => {
                     const [a, al] = s.trim().split('='),
-                        [n, t] = a.split('~');
+                        [n0, t] = a.split('~');
+                    let n = n0, tc = false, k = false;
+                    if (n[0] === '^') { tc = true; n = n.slice(1) }
+                    if (n[0] === '$') { k = true; n = n.slice(1) }
                     return {
                         n,
+                        tc,
+                        k,
+                        r: parts.length > 1 ? ix / (parts.length - 1) : 0,
                         t: t || '',
                         al: al ? al.split('/') : [],
                         l: n.toLowerCase().replace(/[^a-z]/g, '')
@@ -2178,11 +2220,12 @@
                 for (const [st, list] of groups) {
                     const add = (suffix, f) => {
                         const sub = list.filter(f);
-                        if (sub.length < 4 || (suffix && sub.length === list.length)) return;
+                        if (sub.length < 6 || (suffix && sub.length === list.length)) return;
                         const key = di + ':' + sub.map(i => i.n).join('|');
                         if (sig.has(key)) return;
                         sig.add(key);
                         out.push({
+                            nat: !suffix || suffix.startsWith(' that starts with the letter'),
                             d: di,
                             p: st + suffix + '.',
                             a: sub
@@ -2225,57 +2268,79 @@
         }
 
         function toQuestion(e) {
-            const n = e.a.length;
+            const pick = e.a.some(x => x.k), top = Math.max(...e.a.map(x => x.r));
             return {
                 prompt: e.p,
-                answers: e.a.map((a, i) => {
-                    const r = n > 1 ? i / (n - 1) : 0;
-                    return {
-                        text: a.n,
-                        category: TIER_IDS[r < .2 ? 0 : r < .45 ? 1 : r < .7 ? 2 : r < .9 ? 3 : 4],
-                        aliases: a.al
-                    }
-                })
+                answers: e.a.map(a => ({
+                    text: a.n,
+                    category: a.k || (!pick && a.r === top) ? 'krillion' : a.tc ? 'too-clever' : a.r < .22 ? 'plankton' : a.r < .55 ? 'schooler' : a.r < .8 ? 'rare' : 'deep-cut',
+                    aliases: a.al
+                }))
             }
         }
 
-        function randomQuestions(n) {
+        function randomQuestions(n, o = {}) {
             BANK = BANK || buildBank();
-            if (BANK.length - seenQ.size < n) seenQ.clear();
-            const picked = [],
-                topics = new Set();
+            const R = o.rand || Math.random, seen = o.rand ? new Set() : seenQ;
+            const pool = BANK.map((_, i) => i).filter(i => !o.theme || themeOf(BANK[i].d) === o.theme);
+            const dn = new Set(pool.map(j => BANK[j].d)).size,
+                natPool = pool.filter(i => BANK[i].nat);
+            if (pool.filter(i => !seen.has(i)).length < n) pool.forEach(i => seen.delete(i));
+            const picked = [], topics = new Set();
             let guard = 0;
-            while (picked.length < n && guard++ < 20000) {
-                const i = Math.floor(Math.random() * BANK.length);
-                if (seenQ.has(i) || (n <= DATA.length && topics.has(BANK[i].d))) continue;
-                seenQ.add(i);
-                topics.add(BANK[i].d);
-                picked.push(toQuestion(BANK[i]))
+            while (picked.length < n && guard++ < 40000) {
+                const src = R() < .75 ? natPool : pool, i = src[Math.floor(R() * src.length)], e = BANK[i];
+                if (seen.has(i) || (topics.has(e.d) && topics.size < dn)) continue;
+                seen.add(i);
+                topics.add(e.d);
+                picked.push(toQuestion(e))
             }
             return picked
         }
 
-        function randomDive(n) {
+        function randomDive(o = {}) {
             savedPack = savedPack || pack;
             pack = {
                 format: 'deep-dive',
                 version: 2,
                 random: true,
-                title: 'Random dive',
-                description: 'Randomly drawn prompts.',
-                seconds: savedPack.seconds,
+                mode: o.mode || 'unlimited',
+                theme: o.theme || null,
+                dailyKey: o.key || null,
+                title: o.title || (o.theme ? o.theme + ' dive' : 'Unlimited dive'),
+                description: 'Seven prompts. Twenty-five seconds each.',
+                seconds: 25,
                 categories: clone(DEFAULT_CATEGORIES),
-                questions: randomQuestions(n)
+                questions: randomQuestions(7, o)
             };
             start()
         }
 
+        function dailyDive() {
+            const k = todayKey();
+            let prev = null;
+            try { prev = JSON.parse(localStorage.getItem('krillion-daily-' + k)) } catch {}
+            if (!prev) return randomDive({ mode: 'daily', key: k, title: 'Daily Dive · ' + k, rand: seeded(hashStr('krillion-' + k)) });
+            dialog(`<div class="eyebrow">DAILY DIVE · ${k}</div><h2>ALREADY SURFACED.</h2><p>Today's dive is done: <b>${prev.total*10} m</b> (${prev.total} pts). A new one arrives tomorrow.</p><pre style="font:inherit;white-space:pre-wrap;color:var(--ink)">${esc(prev.grid)}</pre><div class="row"><button class="primary" id="dCopy">COPY RESULT</button><button id="dUnl">PLAY UNLIMITED</button></div>`);
+            $('#dCopy').onclick = async () => { try { await navigator.clipboard.writeText(prev.grid); toast('Result copied.') } catch { toast('Copy blocked by the browser.') } };
+            $('#dUnl').onclick = () => { closeDialog(); randomMenu() }
+        }
+
+        function saveDaily() {
+            try {
+                localStorage.setItem('krillion-daily-' + pack.dailyKey, JSON.stringify({
+                    total: run.total,
+                    grid: 'Krillion Daily ' + pack.dailyKey + '\n' + run.total * 10 + ' m · ' + run.total + ' pts\n' + gridOf()
+                }))
+            } catch {}
+        }
+
         function randomMenu() {
             BANK = BANK || buildBank();
-            dialog(`<div class="eyebrow">RANDOM DIVE</div><h2>PULL FROM THE DEEP.</h2><p>${BANK.length.toLocaleString()} ranked prompts across ${DATA.length} topics. Common answers float, rare ones sink.</p><div class="row" id="rn">${[1,5,10,20].map(n=>`<button class="primary" data-n="${n}">${n===1?'1 PROMPT':n+' PROMPTS'}</button>`).join('')}</div><div class="row" style="margin-top:18px"><button class="quiet" id="rcancel">CANCEL</button></div>`);
+            dialog(`<div class="eyebrow">UNLIMITED</div><h2>PULL FROM THE DEEP.</h2><p>${BANK.length.toLocaleString()} prompts across ${DATA.length} topics. Seven prompts, 25 seconds each, all six tiers. Pick a theme or surprise yourself.</p><div id="rn" style="display:grid;gap:8px"><button class="primary" data-t="">✦ SURPRISE ME</button>${Object.keys(THEMES).map(t=>`<button data-t="${t}">${t.toUpperCase()}</button>`).join('')}</div><div class="row" style="margin-top:18px"><button class="quiet" id="rcancel">CANCEL</button></div>`);
             $('#rn').querySelectorAll('button').forEach(b => b.onclick = () => {
                 closeDialog();
-                randomDive(+b.dataset.n)
+                randomDive({ theme: b.dataset.t || null })
             });
             $('#rcancel').onclick = closeDialog
         }
